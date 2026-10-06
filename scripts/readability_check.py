@@ -16,8 +16,24 @@ Exit codes: 0 pass, 1 fail, 2 warn.
 
 import argparse
 import json
+import os
 import re
 import sys
+
+# textstat is a hard dependency (CAP-4b). The skill vendors a copy under
+# vendor/ so deployments without pip access still run; a system install
+# takes precedence when present.
+_VENDOR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vendor")
+if os.path.isdir(_VENDOR) and _VENDOR not in sys.path:
+    sys.path.insert(0, _VENDOR)
+try:
+    import textstat
+except ImportError as e:
+    sys.stderr.write(
+        f"FATAL: textstat is required (pip install textstat, or restore the "
+        f"skill's vendor/ directory). {e}\n"
+    )
+    sys.exit(3)
 
 INTERNALS_RE = re.compile(
     r"append-only|run manifest|evidence rows|cryptographic identit"
@@ -46,6 +62,15 @@ INTERNALS_FAIL = 6
 MEAN_REFS_MAX = 1.6
 PCT3_WARN = 20.0
 PCT3_FAIL = 25.0
+# Standard-formula gates (CAP-4b, calibrated 2026-10-06 on the same blind-
+# labelled pair): 07 (judged 83) = 21.6 words/sentence, FK 15.7; fork v1.1
+# (judged 72) = 32.2, FK 19.0. Warn at the 83-scored benchmark's level,
+# fail midway toward the 72-scored level. Flesch/Fog/SMOG are reported but
+# ungated (redundant with FK; compressed dynamic range on academic prose).
+SENTLEN_WARN = 22.0
+SENTLEN_FAIL = 27.0
+FK_WARN = 16.5
+FK_FAIL = 18.0
 
 
 def body_before_bibliography(text: str) -> str:
@@ -100,6 +125,13 @@ def measure(text: str) -> dict:
         "max_chain": max(chain_counts),
         "internals_hits": len(internals),
         "internals_samples": [s.strip()[:60] for s in internals[:5]],
+        "flesch_ease": round(textstat.flesch_reading_ease(body), 1),
+        "fk_grade": round(textstat.flesch_kincaid_grade(body), 1),
+        "gunning_fog": round(textstat.gunning_fog(body), 1),
+        "smog": round(textstat.smog_index(body), 1),
+        "mean_sent_len": round(
+            textstat.lexicon_count(body) / max(1, textstat.sentence_count(body)), 1
+        ),
     }
 
 
@@ -121,6 +153,26 @@ def evaluate(m: dict) -> tuple[list, list, list]:
             f"citation density: mean {m['mean_refs']} refs/sentence "
             f"(max {MEAN_REFS_MAX}) — cite 1-2 most authoritative per sentence, "
             f"batch the rest at paragraph level"
+        )
+    if m["mean_sent_len"] > SENTLEN_FAIL:
+        fails.append(
+            f"sentence length: mean {m['mean_sent_len']} words/sentence "
+            f"(fail > {SENTLEN_FAIL}) — split compound sentences; unchain "
+            f"comma-linked appositive lists"
+        )
+    elif m["mean_sent_len"] > SENTLEN_WARN:
+        warns.append(
+            f"sentence length: mean {m['mean_sent_len']} words/sentence "
+            f"(warn > {SENTLEN_WARN})"
+        )
+    if m["fk_grade"] > FK_FAIL:
+        fails.append(
+            f"reading grade: Flesch-Kincaid {m['fk_grade']} (fail > {FK_FAIL}) — "
+            f"shorten sentences and prefer plain words"
+        )
+    elif m["fk_grade"] > FK_WARN:
+        warns.append(
+            f"reading grade: Flesch-Kincaid {m['fk_grade']} (warn > {FK_WARN})"
         )
     if m["pct_3plus"] > PCT3_FAIL:
         fails.append(
@@ -156,6 +208,9 @@ def main() -> int:
         print(f"  sentences={m['sentences']} refs={m['refs']} "
               f"mean/sent={m['mean_refs']} pct3+={m['pct_3plus']}% "
               f"maxchain={m['max_chain']} internals={m['internals_hits']}")
+        print(f"  flesch={m['flesch_ease']} fk={m['fk_grade']} "
+              f"fog={m['gunning_fog']} smog={m['smog']} "
+              f"sent-len={m['mean_sent_len']}w")
         for f_ in fails:
             print(f"  FAIL: {f_}")
         for w in warns:
