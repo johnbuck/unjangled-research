@@ -60,7 +60,7 @@
 
 **Rationale**: [Why this option is best given the context]
 
-## Sources
+## Bibliography
 - [Source Title](url)
 - [Source Title](url)
 ```

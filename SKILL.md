@@ -67,7 +67,7 @@ Mode Selection
 - **Citation density:** Cite the 1–2 most authoritative sources inline per sentence. Batch additional supporting sources at the paragraph or finding level, not per sentence. A sentence carrying 3+ bracketed references is unreadable to a human reader.
 
 **Scripts:**
-- `python scripts/validate_report.py --report [path]`
+- `python scripts/validate_report.py --report [path] --format [format]` — pass the format chosen in Phase 8 via format-selection.md (`quick-brief` / `comparison` / `research-summary` / `comprehensive-report`); each format has its own required sections, word targets, and source floors. Omitting `--format` assumes comprehensive-report.
 - `python scripts/verify_citations.py --report [path]`
 - `python scripts/verify_citations_v2.py --dir [run_dir]` (independent second network citation check)
 - `python scripts/readability_check.py [report_path]` (**MANDATORY — run on EVERY report, every time, before HTML/PDF generation; never skip, no exceptions.** Requires `textstat` — `pip install -r requirements.txt` if missing. Must exit 0; failures tell you exactly what to fix: pipeline-internals leakage → move narration to run manifest; citation density → 1-2 refs/sentence, batch the rest at paragraph level; sentence length / reading grade → split compound sentences, unchain appositive lists, prefer plain words)

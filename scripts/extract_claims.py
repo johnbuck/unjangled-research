@@ -149,7 +149,7 @@ def extract_sentences(text: str) -> list[str]:
     text = re.sub(r'\*([^*]+)\*', r'\1', text)  # italic
 
     # Strip the bibliography section entirely — its entries are citations, not claims
-    bib_split = text.split('## Bibliography', 1)
+    bib_split = re.split(r'## (?:Bibliography|Sources)\b', text, maxsplit=1)
     if len(bib_split) > 1:
         after_bib = bib_split[1]
         next_section = after_bib.find('\n## ')

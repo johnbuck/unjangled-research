@@ -20,11 +20,11 @@ def convert_markdown_to_html(markdown_text: str) -> Tuple[str, str]:
         Tuple of (content_html, bibliography_html)
     """
     # Split content and bibliography — but preserve any sections AFTER bibliography
-    parts = markdown_text.split('## Bibliography')
+    parts = re.split(r'## (?:Bibliography|Sources)\b', markdown_text, maxsplit=1)
     content_md = parts[0]
     bibliography_md = ""
     if len(parts) > 1:
-        after_bib = '## Bibliography'.join(parts[1:])
+        after_bib = parts[1]
         # Find the next section heading after the bibliography entries
         next_section = after_bib.find('\n## ')
         if next_section > 0:

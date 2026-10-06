@@ -79,7 +79,7 @@ def body_before_bibliography(text: str) -> str:
     Citation-density metrics are computed on this window only — it is the
     window the CAP-4 thresholds were calibrated on (fork 2.06, 07 1.04).
     """
-    return text.split("## Bibliography", 1)[0]
+    return re.split(r"## (?:Bibliography|Sources)\b", text, maxsplit=1)[0]
 
 
 def reader_facing_text(text: str) -> str:
@@ -89,7 +89,7 @@ def reader_facing_text(text: str) -> str:
     internals gate — moving narration past the bibliography heading must not
     evade the gate.
     """
-    parts = text.split("## Bibliography", 1)
+    parts = re.split(r"## (?:Bibliography|Sources)\b", text, maxsplit=1)
     if len(parts) == 1:
         return text
     after = parts[1]

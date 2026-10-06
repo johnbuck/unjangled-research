@@ -10,11 +10,66 @@ import sys
 from pathlib import Path
 from typing import List, Tuple, Dict
 
+# Per-format structure (mirrors references/report-templates/ and
+# references/format-selection.md). Word ranges and source floors are
+# guidance (warnings), section lists are gates.
+FORMATS: Dict[str, dict] = {
+    "comprehensive-report": {
+        "required": [
+            "Executive Summary", "Introduction", "Main Analysis",
+            "Synthesis", "Limitations", "Recommendations",
+            "Bibliography", "Methodology",
+        ],
+        "recommended": ["Counterevidence Register", "Claims-Evidence Table"],
+        "summary_section": "Executive Summary",
+        "summary_bounds": (50, 400),
+        "word_range": (1500, None),
+        "min_sources": 10,
+    },
+    "research-summary": {
+        "required": [
+            "Executive Summary", "Key Findings", "Detailed Analysis",
+            "Conclusions", "Next Steps", "Bibliography",
+        ],
+        "recommended": [],
+        "summary_section": "Executive Summary",
+        "summary_bounds": (50, 400),
+        "word_range": (500, 1000),
+        "min_sources": 5,
+    },
+    "comparison": {
+        "required": [
+            "Overview", "Comparison Matrix", "Detailed Analysis",
+            "Recommendation", "Bibliography",
+        ],
+        "recommended": [],
+        "summary_section": "Overview",
+        "summary_bounds": (30, 300),
+        "word_range": (800, 1200),
+        "min_sources": 6,
+    },
+    "quick-brief": {
+        "required": ["Summary", "Key Points", "Action Items", "Bibliography"],
+        "recommended": [],
+        "summary_section": None,  # the Summary IS the report
+        "summary_bounds": None,
+        "word_range": (200, 400),
+        "min_sources": 3,
+    },
+}
+DEFAULT_FORMAT = "comprehensive-report"
+
 
 class ReportValidator:
     """Validates research report quality"""
 
-    def __init__(self, report_path: Path):
+    def __init__(self, report_path: Path, fmt: str = DEFAULT_FORMAT):
+        if fmt not in FORMATS:
+            raise ValueError(
+                f"Unknown format '{fmt}'. Choose from: {', '.join(FORMATS)}"
+            )
+        self.fmt = fmt
+        self.spec = FORMATS[fmt]
         self.report_path = report_path
         self.content = self._read_report()
         self.errors: List[str] = []
@@ -60,43 +115,33 @@ class ReportValidator:
         return len(self.errors) == 0
 
     def _check_executive_summary(self) -> bool:
-        """Check executive summary exists and is 200-400 words"""
-        pattern = r'## Executive Summary(.*?)(?=##|\Z)'
+        """Check the format's summary section exists and is within bounds"""
+        section = self.spec["summary_section"]
+        if section is None:
+            return True  # quick-brief: no separate summary section
+        pattern = rf'## {section}(.*?)(?=##|\Z)'
         match = re.search(pattern, self.content, re.DOTALL | re.IGNORECASE)
 
         if not match:
-            self.errors.append("Missing 'Executive Summary' section")
+            self.errors.append(f"Missing '{section}' section")
             return False
 
         summary = match.group(1).strip()
         word_count = len(summary.split())
+        lo, hi = self.spec["summary_bounds"]
 
-        if word_count > 400:
-            self.warnings.append(f"Executive summary too long: {word_count} words (should be ≤400)")
+        if hi and word_count > hi:
+            self.warnings.append(f"{section} too long: {word_count} words (should be ≤{hi})")
 
-        if word_count < 50:
-            self.warnings.append(f"Executive summary too short: {word_count} words (should be ≥50)")
+        if word_count < lo:
+            self.warnings.append(f"{section} too short: {word_count} words (should be ≥{lo})")
 
         return True
 
     def _check_required_sections(self) -> bool:
-        """Check all required sections are present"""
-        required = [
-            "Executive Summary",
-            "Introduction",
-            "Main Analysis",
-            "Synthesis",
-            "Limitations",
-            "Recommendations",
-            "Bibliography",
-            "Methodology"
-        ]
-
-        # Recommended sections (warnings if missing, not errors)
-        recommended = [
-            "Counterevidence Register",
-            "Claims-Evidence Table"
-        ]
+        """Check all format-required sections are present"""
+        required = self.spec["required"]
+        recommended = self.spec["recommended"]
 
         missing = []
         for section in required:
@@ -245,12 +290,20 @@ class ReportValidator:
         return True
 
     def _check_word_count(self) -> bool:
-        """Check overall report length"""
+        """Check overall report length against the format's target range"""
         word_count = len(self.content.split())
+        lo, hi = self.spec["word_range"]
 
-        if word_count < 500:
-            self.warnings.append(f"Report is very short: {word_count} words (consider expanding)")
-        # No upper limit warning - progressive assembly supports unlimited lengths
+        if word_count < lo * 0.6:
+            self.warnings.append(
+                f"Report is very short for {self.fmt}: {word_count} words "
+                f"(target ≥{lo})"
+            )
+        if hi and word_count > hi * 2.0:
+            self.warnings.append(
+                f"Report is very long for {self.fmt}: {word_count} words "
+                f"(target ≤{hi})"
+            )
 
         return True
 
@@ -266,9 +319,13 @@ class ReportValidator:
         bib_entries = re.findall(r'^\[(\d+)\]', bib_section, re.MULTILINE)
 
         source_count = len(set(bib_entries))
+        floor = self.spec["min_sources"]
 
-        if source_count < 10:
-            self.warnings.append(f"Only {source_count} sources (recommended: ≥10)")
+        if source_count < floor:
+            self.warnings.append(
+                f"Only {source_count} sources for {self.fmt} "
+                f"(recommended: ≥{floor})"
+            )
 
         return True
 
@@ -336,6 +393,18 @@ Examples:
         help='Path to research report markdown file'
     )
 
+    parser.add_argument(
+        '--format', '-f',
+        type=str,
+        default=DEFAULT_FORMAT,
+        choices=sorted(FORMATS.keys()),
+        help=(
+            'Report format the writer used (from format-selection.md). '
+            'Each format has its own required sections, word targets, and '
+            f'source floors. Default: {DEFAULT_FORMAT}.'
+        )
+    )
+
     args = parser.parse_args()
 
     report_path = Path(args.report)
@@ -344,7 +413,7 @@ Examples:
         print(f"❌ ERROR: Report file not found: {report_path}")
         sys.exit(1)
 
-    validator = ReportValidator(report_path)
+    validator = ReportValidator(report_path, fmt=args.format)
     passed = validator.validate()
 
     sys.exit(0 if passed else 1)

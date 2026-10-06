@@ -41,6 +41,6 @@
 1. [Immediate next step]
 2. [Follow-up action]
 
-## Sources
+## Bibliography
 - [Source Title](url) [E:id — where support is not evident from the link alone]
 ```

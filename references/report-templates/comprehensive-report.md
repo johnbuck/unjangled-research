@@ -84,7 +84,7 @@
 ### Open Questions
 - [Unanswered questions for future research]
 
-## Sources
+## Bibliography
 - [Source Title](url)
 - [Source Title](url)
 ```

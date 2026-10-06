@@ -62,7 +62,7 @@
 2. [Actionable recommendation]
 3. [Actionable recommendation]
 
-## Sources
+## Bibliography
 
 - [Source Title](url)
 - [Source Title](url)
