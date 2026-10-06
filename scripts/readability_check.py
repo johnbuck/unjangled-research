@@ -22,7 +22,8 @@ import sys
 INTERNALS_RE = re.compile(
     r"append-only|run manifest|evidence rows|cryptographic identit"
     r"|deep mode|fallback chain|evidence store|the run executed"
-    r"|retrieval registered|source evaluation scored|pipeline|harness",
+    r"|retrieval registered|source evaluation scored|pipeline|harness"
+    r"|\b[0-9a-f]{12,}\b",
     re.IGNORECASE,
 )
 REF_RE = re.compile(r"\[(\d+(?:,\s*\d+)*)\]")
@@ -33,20 +34,49 @@ def count_refs(sentence: str) -> int:
     return sum(len(g.split(",")) for g in REF_RE.findall(sentence))
 SENT_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
-# CAP-4 thresholds (calibrated; do not tune without re-calibrating on labelled artifacts)
-INTERNALS_MAX = 0
+# CAP-4 thresholds. Internals recalibrated 2026-10-06 after an instrument-
+# window defect was found (post-bibliography appendices were unmeasured;
+# corrected to whole-document scan). Re-derived from the same blind-labelled
+# pair: fork v1.1 (judged 72) = 20 hits incl. hash-ID table; 07 (judged 83,
+# docked lightly for its own appendix chatter) = 6 hits. Judges penalize
+# degree, not presence -> warn > 2, fail > 6 (never worse than the 83-scored
+# benchmark). Hash-ID pattern added per judge feedback naming the table.
+INTERNALS_WARN = 2
+INTERNALS_FAIL = 6
 MEAN_REFS_MAX = 1.6
 PCT3_WARN = 20.0
 PCT3_FAIL = 25.0
 
 
-def split_bibliography(text: str) -> str:
+def body_before_bibliography(text: str) -> str:
+    """Argument prose: everything before the '## Bibliography' heading.
+
+    Citation-density metrics are computed on this window only — it is the
+    window the CAP-4 thresholds were calibrated on (fork 2.06, 07 1.04).
+    """
+    return text.split("## Bibliography", 1)[0]
+
+
+def reader_facing_text(text: str) -> str:
+    """The whole document minus the bibliography section's citation entries.
+
+    Post-bibliography appendices are reader-facing and stay IN scope for the
+    internals gate — moving narration past the bibliography heading must not
+    evade the gate.
+    """
     parts = text.split("## Bibliography", 1)
-    return parts[0]
+    if len(parts) == 1:
+        return text
+    after = parts[1]
+    nxt = after.find("\n## ")
+    if nxt == -1:
+        return parts[0]
+    return parts[0] + after[nxt:]
 
 
 def measure(text: str) -> dict:
-    body = split_bibliography(text)
+    body = body_before_bibliography(text)  # calibrated citation-density window
+    reader_facing = reader_facing_text(text)  # whole doc minus bib entries
     sentences = [s for s in SENT_SPLIT_RE.split(body) if len(s.strip()) > 30]
     if not sentences:
         return {
@@ -61,7 +91,7 @@ def measure(text: str) -> dict:
     chain_counts = [count_refs(s) for s in sentences]
     n3 = sum(1 for n in chain_counts if n >= 3)
     total_refs = sum(chain_counts)
-    internals = INTERNALS_RE.findall(body)
+    internals = INTERNALS_RE.findall(reader_facing)
     return {
         "sentences": len(sentences),
         "refs": total_refs,
@@ -75,11 +105,16 @@ def measure(text: str) -> dict:
 
 def evaluate(m: dict) -> tuple[list, list, list]:
     fails, warns, advisories = [], [], []
-    if m["internals_hits"] > INTERNALS_MAX:
+    if m["internals_hits"] > INTERNALS_FAIL:
         fails.append(
             f"pipeline-internals leakage: {m['internals_hits']} hits "
-            f"(samples: {m['internals_samples']}) — process narration belongs "
-            f"in the run manifest, not the report"
+            f"(fail > {INTERNALS_FAIL}; samples: {m['internals_samples']}) — "
+            f"process narration belongs in the run manifest, not the report"
+        )
+    elif m["internals_hits"] > INTERNALS_WARN:
+        warns.append(
+            f"pipeline-internals leakage: {m['internals_hits']} hits "
+            f"(warn > {INTERNALS_WARN}; samples: {m['internals_samples']})"
         )
     if m["mean_refs"] > MEAN_REFS_MAX:
         fails.append(

@@ -26,9 +26,18 @@ def test_comma_style_chains_counted():
     m = measure(text)
     assert m["refs"] == 5, f"expected 5 refs, got {m['refs']}"
 
+def test_postbib_internals_fail():
+    """Narration moved past the bibliography must still trip the gate."""
+    m = measure(open("tests/fixtures/postbib_internals_report.md").read())
+    fails, warns, adv = evaluate(m)
+    assert fails and any("internals" in f for f in fails)
+    # citation metrics unchanged by the leak
+    assert m["mean_refs"] <= 1.6
+
 if __name__ == "__main__":
     test_dense_fixture_fails()
     test_clean_fixture_passes()
     test_bibliography_excluded()
     test_comma_style_chains_counted()
-    print("all 4 known-answer tests ran and passed")
+    test_postbib_internals_fail()
+    print("all 5 known-answer tests ran and passed")
