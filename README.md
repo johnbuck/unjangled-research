@@ -1,68 +1,119 @@
-# unjangled-research
+# Deep Research Skill for Claude Code
 
-A research skill for deep-research agents: an 8-phase pipeline with evidence persistence, dual citation verifiers, and format-selection report templates.
-
-**Validated at comprehensiveness 86.5 (blind RACE scoring)** — 48 sources on a single-task benchmark, beating its upstream baseline (75.0) by 11.5 points with the same model on the same harness.
-
-## What it is
-
-A [SKILL.md](SKILL.md)-format skill that teaches an agent to research a question against primary sources and produce a citation-tracked report. The agent runs eight phases — SCOPE, PLAN, RETRIEVE, TRIANGULATE, SYNTHESIZE, CRITIQUE, REFINE, PACKAGE — persisting every quote to an append-only evidence store before writing the sentence it supports.
-
-## Key features
-
-- **8-phase pipeline** (inherited from [199-biotechnologies/claude-deep-research-skill](https://github.com/199-biotechnologies/claude-deep-research-skill) at `f2f2c0f`, MIT license)
-- **Evidence store**: append-only JSONL with sha256 content-hash IDs; every quote persisted before the sentence it supports
-- **Claim-evidence linkage**: `verify_claim_support.py link` resolves citation numbers to source IDs and matches claims to evidence rows by token overlap
-- **Dual citation verifiers**: 07's own `verify_citations.py` (report-level) + `verify_citations_v2.py` (independent second network check, re-fetches sources and byte-verifies quotes)
-- **Source evaluator** covering academic, government, education, humanities, and social-science domains; resolves DOIs to publisher domains for scoring
-- **Format-selection templates**: decision tree (`references/format-selection.md`) picks the right report template (comparison, comprehensive, quick-brief, research-summary) based on the question type
-- **Raw document archiving**: every fetched page/PDF archived to `raw/` for reproducibility
-- **Machine-ingestible artifacts**: structured JSONL stores with stable schemas — designed for future knowledge-graph integration
+Enterprise-grade research engine for Claude Code. Produces citation-backed reports with source credibility scoring, multi-provider search, and automated validation.
 
 ## Installation
 
-Copy this directory into your agent's skills folder. No pip dependencies beyond stdlib Python 3.10+. For HTML/PDF output, `uv run --with weasyprint` works.
+```bash
+# Clone into Claude Code skills directory
+git clone https://github.com/199-biotechnologies/claude-deep-research-skill.git ~/.claude/skills/deep-research
+```
+
+No additional dependencies required for basic usage.
+
+### Optional: search-cli (multi-provider search)
+
+For aggregated search across Brave, Serper, Exa, Jina, and Firecrawl:
+
+```bash
+brew tap 199-biotechnologies/tap && brew install search-cli
+search config set keys.brave YOUR_KEY  # configure at least one provider
+```
+
+## Usage
 
 ```
-cp -r unjangled-research/ <your-agent>/skills/unjangled-research/
+deep research on the current state of quantum computing
 ```
 
-## Scripts
+```
+deep research in ultradeep mode: compare PostgreSQL vs Supabase for our stack
+```
 
-| Script | Purpose |
-|--------|---------|
-| `research_engine.py` | Phase-prompt engine for deep-mode |
-| `evidence_store.py` | Append-only JSONL store for quotes |
-| `citation_manager.py` | Source registration, display numbers, bibliography export |
-| `extract_claims.py` | Extract claims from report text |
-| `verify_claim_support.py` | Link claims to evidence (`link`) and verify support (`verify`) |
-| `validate_report.py` | 9-check report validation |
-| `verify_citations.py` | Network citation verification (upstream) |
-| `verify_citations_v2.py` | Independent second network citation checker |
-| `source_evaluator.py` | Credibility scoring with domain awareness |
-| `md_to_html.py` | Markdown to styled HTML |
-| `verify_html.py` | HTML output verification |
+## Research Modes
 
-## Validation results
+| Mode | Phases | Duration | Best For |
+|------|--------|----------|----------|
+| Quick | 3 | 2-5 min | Initial exploration |
+| Standard | 6 | 5-10 min | Most research questions |
+| Deep | 8 | 10-20 min | Complex topics, critical decisions |
+| UltraDeep | 8+ | 20-45 min | Comprehensive reports, maximum rigor |
 
-Blind RACE scoring on DeepResearch Bench task 73 (holistic elementary English education), run on a Hermes/GLM-5.3 agent:
+## Pipeline
 
-| Dimension | This skill | Upstream 07 |
-|-----------|-----------|-------------|
-| Comprehensiveness | **86.5** | 75.0 |
-| Instruction following | **79.5** | 80.5 |
-| Depth | 78.5 | 82.0 |
-| Readability | 72.0 | 83.0 |
-| **Overall** | **79.0** | 78.5 |
+Scope &rarr; Plan &rarr; **Retrieve** (parallel search + agents) &rarr; Triangulate &rarr; Outline Refinement &rarr; Synthesize &rarr; Critique (with loop-back) &rarr; Refine &rarr; Package
 
-Judged by two independent cross-model agents (claude-opus, claude-sonnet), blind to which report was which.
+Key features:
+- **Step 0**: Retrieves current date before searches (prevents stale training-data year assumptions)
+- **Parallel retrieval**: 5-10 concurrent searches + 2-3 focused sub-agents returning structured evidence objects
+- **First Finish Search**: Adaptive quality thresholds by mode
+- **Critique loop-back**: Phase 6 can return to Phase 3 with delta-queries if critical gaps found
+- **Multi-persona red teaming**: Skeptical Practitioner, Adversarial Reviewer, Implementation Engineer (Deep/UltraDeep)
+- **Disk-persisted citations**: `sources.json` survives context compaction and continuation agents
 
-## Provenance
+## Output
 
-Hard fork of [199-biotechnologies/claude-deep-research-skill](https://github.com/199-biotechnologies/claude-deep-research-skill) at commit `f2f2c0f` (MIT license). Bug fixes, template overlay, verifier sidecar, and domain-extended source evaluator are original work from the unjangled-research effort.
+Reports saved to `~/Documents/[Topic]_Research_[Date]/`:
+- Markdown (primary source of truth)
+- HTML (McKinsey-style, auto-opened in browser)
+- PDF (professional print via WeasyPrint)
 
-See [ATTRIBUTION.md](ATTRIBUTION.md) for detailed provenance.
+Reports >18K words auto-continue via recursive agent spawning with context preservation.
+
+## Quality Standards
+
+- 10+ sources, 3+ per major claim
+- Executive summary 200-400 words
+- Findings 600-2,000 words each, prose-first (>=80%)
+- Full bibliography with URLs, no placeholders
+- Automated validation: `validate_report.py` (9 checks) + `verify_citations.py` (DOI/URL/hallucination detection)
+- Validation loop: validate &rarr; fix &rarr; retry (max 3 cycles)
+
+## Search Tools
+
+| Tool | Priority | Setup |
+|------|----------|-------|
+| search-cli | **Primary** — all searches go here first | `brew install search-cli` + API keys |
+| WebSearch | Fallback — if search-cli fails or rate-limited | None (built-in) |
+| Exa MCP | Optional — semantic/neural search alongside search-cli | MCP config |
+
+## Architecture
+
+```
+deep-research/
+├── SKILL.md                          # Skill entry point (lean, ~100 lines)
+├── reference/
+│   ├── methodology.md                # 8-phase pipeline details
+│   ├── report-assembly.md            # Progressive generation strategy
+│   ├── quality-gates.md              # Validation standards
+│   ├── html-generation.md            # McKinsey HTML conversion
+│   ├── continuation.md               # Auto-continuation protocol
+│   └── weasyprint_guidelines.md      # PDF generation
+├── templates/
+│   ├── report_template.md            # Report structure template
+│   └── mckinsey_report_template.html # HTML report template
+├── scripts/
+│   ├── validate_report.py            # 9-check structure validator
+│   ├── verify_citations.py           # DOI/URL/hallucination checker
+│   ├── source_evaluator.py           # Source credibility scoring
+│   ├── citation_manager.py           # Citation tracking
+│   ├── md_to_html.py                 # Markdown to HTML converter
+│   ├── verify_html.py                # HTML verification
+│   └── research_engine.py            # Core orchestration engine
+└── tests/
+    └── fixtures/                     # Test report fixtures
+```
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 2.3.1 | 2026-03-19 | Template/validator harmonization, structured evidence, critique loop-back, multi-persona red teaming |
+| 2.3 | 2026-03-19 | Contract harmonization, search-cli integration, dynamic year detection, disk-persisted citations, validation loops |
+| 2.2 | 2025-11-05 | Auto-continuation system for unlimited length |
+| 2.1 | 2025-11-05 | Progressive file assembly |
+| 1.0 | 2025-11-04 | Initial release |
 
 ## License
 
-MIT (inherited from upstream).
+MIT - modify as needed for your workflow.
