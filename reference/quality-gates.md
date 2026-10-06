@@ -18,37 +18,66 @@ python scripts/verify_citations.py --report [path]
 ### Structure & Quality Validation
 
 ```bash
-python scripts/validate_report.py --report [path]
+python scripts/validate_report.py --report [path] --format [format]
 ```
 
-**9 automated checks:**
-1. Executive summary length (200-400 words)
-2. Required sections present
-3. Citations formatted [1], [2], [3]
-4. Bibliography matches citations
-5. No placeholder text (TBD, TODO)
-6. Word count reasonable (500-10000)
-7. Minimum 10 sources
-8. No broken internal links
+Pass the format chosen via `references/format-selection.md`
+(`quick-brief` / `comparison` / `research-summary` / `comprehensive-report`;
+omitting `--format` assumes comprehensive-report).
 
-**Failure handling:**
-- Attempt 1: Auto-fix formatting/links
-- Attempt 2: Manual review + correction
-- After 2 failures: STOP, report issues, ask user
+**Per-format targets (sections are gates; words and source floors are warnings):**
+
+| Format | Required sections | Word target | Source floor |
+|---|---|---|---|
+| comprehensive-report | Exec Summary, Introduction, Main Analysis, Synthesis, Limitations, Recommendations, Bibliography, Methodology | 1500+ | 10 |
+| research-summary | Exec Summary, Key Findings, Detailed Analysis, Conclusions, Next Steps, Bibliography | 500-1000 | 5 |
+| comparison | Overview, Comparison Matrix, Detailed Analysis, Recommendation, Bibliography | 800-1200 | 6 |
+| quick-brief | Summary, Key Points, Action Items, Bibliography | 200-400 | 3 |
+
+**Automated checks:** summary bounds (per format), required sections (per
+format), citations formatted [1], [2], [3], bibliography matches citations
+(numbered `[N]` entries; list-marker `- [N]` form accepted), no placeholder
+text, word count vs format target, source floor vs format, no broken
+internal links.
+
+### Readability Gate (MANDATORY — every report, every format)
+
+```bash
+python scripts/readability_check.py [report_path]
+```
+
+Must exit 0 before HTML/PDF generation. Never skipped. Requires `textstat`
+(`pip install -r requirements.txt`; a vendored copy ships under `vendor/`).
+
+| Gate | Warn | Fail | Notes |
+|---|---|---|---|
+| Citation density (mean refs/sentence) | — | > 1.6 | 1-2 most authoritative per sentence; batch the rest at paragraph level |
+| % sentences with 3+ refs | > 20% | > 25% | |
+| Pipeline-internals hits (whole document, appendices included) | > 2 | > 6 | Process narration belongs in run_manifest.json, never in reader-facing prose — including after the bibliography |
+| Mean sentence length | > 22w | > 27w | Split compound sentences; unchain appositive lists |
+| Flesch-Kincaid grade | > 16.5 | > 18 | |
+
+Max citation chain is advisory only. Known limitation: burst-citation
+patterns (mean near 1.6 with many refs concentrated in few sentences) can
+pass density; the pct3plus gate covers this at full document length but
+quantizes below ~20 sentences — if a short-format run ever shows mean near
+1.6 with high 3+ concentration, revisit before shipping.
 
 ### Validation Loop Protocol
 
 **After generating ANY report, run this loop:**
 
-1. Run `python scripts/validate_report.py --report [path]`
-2. Run `python scripts/verify_citations.py --report [path]`
-3. If EITHER fails:
-   - Read error output carefully
+1. Run `python scripts/validate_report.py --report [path] --format [format]`
+2. Run `python scripts/readability_check.py [path]` — exit 0 required
+3. Run `python scripts/verify_citations.py --report [path]`
+4. Run `python scripts/verify_citations_v2.py --dir [run_dir]`
+5. If ANY fails:
+   - Read error output carefully — the gates name the repair
    - Fix the specific issues identified
-   - Re-run BOTH validators
-4. Maximum 3 retry cycles. If still failing after 3 cycles: STOP and report issues to user.
+   - Re-run ALL validators
+6. Maximum 3 retry cycles. If still failing after 3 cycles: STOP and report issues to user.
 
-**Do NOT skip validation.** Every report must pass both scripts before delivery.
+**Do NOT skip validation.** Every report must pass every gate before delivery.
 
 ---
 
@@ -156,13 +185,13 @@ Before considering section complete:
 ## Report Quality Standards
 
 **Every report must have:**
-- 10+ sources (document if fewer)
+- Sources at or above the chosen format's floor (see table above)
 - 3+ sources per major claim
-- Executive summary 200-400 words
+- Summary section within the format's bounds
 - Full citations with URLs
 - Credibility assessment
-- Limitations section
-- Methodology documented
+- Limitations section (comprehensive-report)
+- Methodology documented (epistemics only — never pipeline mechanics)
 - No placeholders
 
 **Priority:** Thoroughness over speed. Quality > speed.

@@ -2,47 +2,49 @@
 
 ## Basic Source Citation
 
-Always cite sources you have registered in `sources.jsonl` using inline markdown links:
+Always cite sources you have registered in `sources.jsonl` using numbered citations. The number refers to the source's entry in the report's bibliography:
 
 ```markdown
-[Page Title](https://example.com/page)
+The Q4 revenue increased by 23% quarter-over-quarter [4].
 ```
 
-The URL is the source's `raw_url` from its registered source row. The title is the source's registered `title`.
+The number's bibliography entry carries the source's registered title and `raw_url`. Never paste raw URLs into prose.
 
-## Evidence Tags
+## Evidence Backing
 
-Add an evidence tag whenever support is not evident from the link alone — numbers, quotes, contested claims, anything a reader might challenge:
+Every load-bearing statement — numbers, quotes, contested claims, anything a reader might challenge — must have a backing row in this run's `evidence.jsonl`. The row holds the exact quote and its locator. The report prose shows only the `[N]` citation; evidence IDs never appear in reader-facing text:
 
 ```markdown
-The Q4 revenue increased by 23% quarter-over-quarter ([Q4 Financial Report](https://example.com/q4) [E:1a2b3c4d5e6f7890]).
+The Q4 revenue increased by 23% quarter-over-quarter [4].
 ```
 
-An `[E:id]` must resolve to an `evidence_id` in this Run's `evidence.jsonl`. The tag is the reader's path from a Report sentence to the exact captured quote and its locator.
+An evidence row must exist for the quoted figure; `verify_citations_v2.py` byte-verifies it against the fetched source.
 
 ## Inline Citations
 
 Cite immediately after referenced information:
 
 ```markdown
-The Q4 revenue increased by 23% quarter-over-quarter ([Q4 Financial Report](https://example.com/q4)).
+The Q4 revenue increased by 23% quarter-over-quarter [4].
 ```
 
 ## Multiple Sources
 
-When information comes from multiple sources:
+When information comes from multiple sources, keep it to 1-2 per sentence and batch the rest at paragraph level:
 
 ```markdown
-Customer satisfaction has improved across all metrics ([Q3 Survey Results](https://example.com/q3), [Support Analysis](https://example.com/support)).
+Customer satisfaction has improved across all metrics [2], with support workloads flat over the same period [5].
 ```
 
 ## Grouping
 
-Group citations where adjacent claims share a source. **Over-citing** (every sentence) and **under-citing** (no attribution) are both failures; the right balance is one grouped citation per supported statement:
+Group citations where adjacent claims share a source. **Over-citing** (every sentence, chains of 3+) and **under-citing** (no attribution) are both failures; the right balance is one or two citations per supported statement:
 
 ```markdown
-The revenue increased, costs decreased, and margin improved ([Q4 Financial Report](https://example.com/q4) [E:0f1e2d3c4b5a6978]).
+The revenue increased, costs decreased, and margin improved [4].
 ```
+
+The readability gate fails reports whose mean citation density exceeds 1.6 refs/sentence — see `reference/quality-gates.md`.
 
 ## Section-Level Citations
 
@@ -51,46 +53,36 @@ For longer sections derived from one source:
 ```markdown
 ### Engineering Priorities
 
-According to the [Engineering Roadmap 2025](https://example.com/roadmap):
+According to the engineering roadmap [7]:
 
 - Focus on API scalability
 - Improve developer experience
 - Migrate to microservices architecture
 ```
 
-## Sources Section
+## Bibliography Section
 
-Every Report ends with a "Sources" section listing every registered source the Report actually cites:
-
-```markdown
-## Sources
-
-- [Strategic Plan 2025](https://example.com/strategic-plan)
-- [Market Analysis Report](https://example.com/market-analysis)
-- [Competitor Research: Q3](https://example.com/competitor-q3)
-```
-
-Group by category for long lists:
+Every report ends with a `## Bibliography` section listing every registered source the report actually cites. Use numbered entries — one per line, in citation order:
 
 ```markdown
-## Sources
-
-### Primary Sources
-- [Official Roadmap](https://example.com/roadmap)
-- [Strategy Document](https://example.com/strategy)
-
-### Supporting Research
-- [Market Trends](https://example.com/trends)
+## Bibliography
+[1] Author/Org (2025). Strategic Plan. https://example.com/strategic-plan
+[2] Market Analysis Team (2024). Market Analysis Report. https://example.com/market-analysis
+[3] Competitor Research Group (2025). Q3 Competitive Review. https://example.com/competitor-q3
 ```
 
-Removing the Sources section must leave no orphan inline citation, and vice versa: every inline link resolves to a Registered Source, every Sources entry is cited inline.
+A leading list marker (`- [1] ...`) is accepted, but bare `[N]` lines are preferred.
+
+**Gate wiring:** `validate_report.py --format [format]` checks that every inline `[N]` resolves to a bibliography entry, numbering has no gaps, and the entry count clears the format's source floor. Removing the bibliography must leave no orphan inline citation, and vice versa: every inline `[N]` resolves to a registered source, every bibliography entry is cited inline.
+
+**Never put evidence-row IDs (`[E:...]`) in report prose.** Evidence IDs live only in `evidence.jsonl` and the run manifest — the readability gate flags long hex tokens in reader-facing text as pipeline-internals leakage.
 
 ## Quoting Content
 
-When quoting directly from a source:
+When quoting directly from a source, cite by number in the sentence:
 
 ```markdown
-The product team noted: "We need to prioritize mobile experience improvements" ([Product Meeting Notes](https://example.com/notes) [E:9a8b7c6d5e4f3021]).
+The product team noted: "We need to prioritize mobile experience improvements" [3].
 ```
 
 For block quotes:
@@ -98,14 +90,14 @@ For block quotes:
 ```markdown
 > We need to prioritize mobile experience improvements to meet our Q4 goals. This includes performance optimization and UI refresh.
 >
-> — [Product Meeting Notes - Oct 2025](https://example.com/notes)
+> — Product Meeting Notes, Oct 2025 [3]
 ```
 
-Direct quotes must exist as evidence rows: the quote in the Report matches the `quote` field of the `[E:id]` row in `evidence.jsonl`.
+Direct quotes must exist as evidence rows: the quote in the report matches the `quote` field of a row in `evidence.jsonl` (verified byte-level by `verify_citations_v2.py`); the row holds the evidence ID, not the prose.
 
 ## Data Citations
 
-When presenting data, cite the source on a "Source:" line:
+When presenting data, cite the source by number on a "Source:" line:
 
 ```markdown
 | Metric | Q3 | Q4 | Change |
@@ -113,22 +105,22 @@ When presenting data, cite the source on a "Source:" line:
 | Revenue | $2.3M | $2.8M | +21.7% |
 | Users | 12.4K | 15.1K | +21.8% |
 
-Source: [Financial Dashboard](https://example.com/dashboard) [E:1122334455667788]
+Source: Financial Dashboard [6]
 ```
 
 ## Freshness Dating
 
-Publication date is part of the truth. The source row's `published_at` carries it; stale numbers carry their publication date in the Report:
+Publication date is part of the truth. The source row's `published_at` carries it; stale numbers carry their publication date in the report:
 
 ```markdown
-The original API design ([API Spec v1](https://example.com/api-v1), published January 2024) has been superseded by the new architecture in [API Spec v2](https://example.com/api-v2).
+The original API design, published January 2024 [8], has been superseded by the new architecture [9].
 ```
 
 Never guess a date from memory — take it from the source page or leave `published_at` null and say the date is unknown.
 
 ## Cross-References
 
-Link to related prior Runs by their report path when the current findings build on them:
+Link to related prior runs by their report path when the current findings build on them:
 
 ```markdown
 ## Related Research
@@ -140,20 +132,22 @@ For implementation details, see:
 - [Technical Implementation Guide](../technical-implementation-20251012/technical-implementation.md)
 ```
 
-Evidence from a prior Run is never cited directly: re-register the source and re-capture the quote into the current Run's stores first (consult freely, re-capture to cite).
+Evidence from a prior run is never cited directly: re-register the source and re-capture the quote into the current run's stores first (consult freely, re-capture to cite).
 
 ## Citation Validation (final pass, local and structural)
 
-Before the Report counts as done, check — locally, against Run Folder files only, no network:
+Before the report counts as done, check — locally, against run-folder files only, no network:
 
-- Every key claim has a source citation
-- Every inline link resolves to a Registered Source in `sources.jsonl`
-- Every `[E:id]` resolves to a row in `evidence.jsonl`
-- Sources section includes all cited sources and nothing uncited
+- Every key claim has a numbered citation
+- Every `[N]` resolves to a bibliography entry backed by a registered source in `sources.jsonl`
+- Every load-bearing claim has a row in `evidence.jsonl`
+- Bibliography includes all cited sources and nothing uncited
 - Outdated sources are noted as such (freshness dating)
 - Direct quotes are clearly marked and match their evidence rows
 - Data sources are attributed
 
+The full gate chain (validate, readability, verify_citations, verify_citations_v2) is documented in `reference/quality-gates.md`.
+
 ## Citation Style
 
-The style is fixed, not a per-Run choice: inline markdown links after the supported statement, `[E:id]` tags where support is not evident from the link alone, grouped citations, and a trailing Sources section. Every citation a reader follows must land on a Run Folder artifact using only Run Folder files.
+The style is fixed, not a per-run choice: numbered `[N]` citations after the supported statement, evidence rows (not inline IDs) carrying the proof, grouped citations at 1-2 per sentence, and a trailing numbered Bibliography section. Every citation a reader follows must land on a run-folder artifact using only run-folder files.

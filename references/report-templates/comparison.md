@@ -50,7 +50,7 @@
 
 **Best for**: [Use case]
 
-**Source**: [Source Page](url) [E:id]
+Source: [N]
 
 [Repeat for each option]
 

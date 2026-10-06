@@ -42,5 +42,5 @@
 2. [Follow-up action]
 
 ## Bibliography
-- [Source Title](url) [E:id — where support is not evident from the link alone]
+[N] Author/Org (Year). Title. url
 ```

@@ -77,15 +77,15 @@ Mode Selection
 
 ## Output Contract
 
-**Required sections:**
-- Executive Summary (200-400 words)
+**Required sections:** depend on the chosen format — see [format-selection.md](./references/format-selection.md) and the per-format table in [quality-gates.md](./reference/quality-gates.md). The default (comprehensive-report) requires:
+- Executive Summary (within format bounds)
 - Introduction (scope, methodology, assumptions)
 - Main Analysis (4-8 findings, 600-2,000 words each, cited)
 - Synthesis & Insights (patterns, implications)
 - Limitations & Caveats
 - Recommendations
 - Bibliography (COMPLETE - every citation, no placeholders)
-- Methodology Appendix
+- Methodology Appendix (epistemics only — never pipeline mechanics)
 
 **Output files (all to `~/Documents/[Topic]_Research_[YYYYMMDD]/`):**
 - Markdown (primary source of truth)
@@ -97,7 +97,7 @@ Mode Selection
 - PDF (professional print, auto-opened)
 
 **Quality standards:**
-- 10+ sources, 3+ per major claim (cluster-independent, not just count)
+- Sources at or above the chosen format's floor (3 quick-brief / 5 research-summary / 6 comparison / 10 comprehensive), 3+ per major claim
 - All factual claims cited immediately [N] with evidence backing in `evidence.jsonl`
 - Claim-support verification mandatory: no unsupported factual claims pass delivery
 - No placeholders, no fabricated citations

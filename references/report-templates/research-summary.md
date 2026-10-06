@@ -34,15 +34,15 @@
 
 ### Finding 1: [Clear headline]
 [Details and supporting evidence]
-- Source: [Original Source](url) [E:id]
+[N] Author/Org (Year). Title. url
 
 ### Finding 2: [Clear headline]
 [Details and supporting evidence]
-- Source: [Original Source](url) [E:id]
+[N] Author/Org (Year). Title. url
 
 ### Finding 3: [Clear headline]
 [Details and supporting evidence]
-- Source: [Original Source](url) [E:id]
+[N] Author/Org (Year). Title. url
 
 ## Detailed Analysis
 

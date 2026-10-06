@@ -154,7 +154,7 @@ As results arrive:
 **Adaptive completion based on quality threshold:**
 
 **Quality gate:** Proceed to Phase 4 when FIRST threshold reached:
-- **Quick mode:** 10+ sources with avg credibility >60/100 OR 2 minutes elapsed
+- **Quick mode:** 10+ registered sources (retrieval target; citation floors are per-format) with avg credibility >60/100 OR 2 minutes elapsed
 - **Standard mode:** 15+ sources with avg credibility >60/100 OR 5 minutes elapsed
 - **Deep mode:** 25+ sources with avg credibility >70/100 OR 10 minutes elapsed
 - **UltraDeep mode:** 30+ sources with avg credibility >75/100 OR 15 minutes elapsed

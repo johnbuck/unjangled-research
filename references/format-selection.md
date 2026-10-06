@@ -48,10 +48,10 @@ Word targets are goals, not gates: a Quick Brief that needs 450 words is still a
 - Use sparingly for maximum impact
 
 ### Citations
-- Cite inline with markdown links — `[Title](url)` — immediately after the supported statement
-- Add an `[E:id]` tag whenever support is not evident from the link alone
+- Cite inline by number — `[N]` — immediately after the supported statement
+- Evidence rows in `evidence.jsonl` carry the proof (never inline `[E:id]` tags in prose)
 - Include citation immediately after referenced information
-- Group all sources in a "Sources" section at the end
+- Group all sources in a numbered `## Bibliography` section at the end
 - Full rules: [citations.md](citations.md)
 
 ### Tables
@@ -92,7 +92,12 @@ Example code or configuration here
 - Include implementation hints when relevant
 
 ### Source Citations
-- Link to the source's registered URL — `[Title](url)` — and add `[E:id]` where support is not evident from the link alone
+- Cite by number — `[N]` — resolving to a numbered Bibliography entry (see `references/citations.md`)
 - Note if information is outdated (check `published_at` on the source row)
 - Credit specific sections when quoting
-- Group related sources together
+- Group related sources together, 1-2 refs per sentence
+
+### Validation wiring
+After selecting a format and writing the report, validate against THAT format:
+`python scripts/validate_report.py --report [path] --format [chosen-format]`
+Each format has its own required sections, word targets, and source floors (table in `reference/quality-gates.md`). The readability gate (`readability_check.py`, exit 0 required) applies to every format unchanged.

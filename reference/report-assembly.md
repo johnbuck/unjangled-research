@@ -128,3 +128,15 @@ Example: 10 findings x 1,500 words = 15,000 words total
 - Each Edit call: 1,500 words (under limit)
 - File grows to 15,000 words
 - No single tool call exceeds limits
+
+---
+
+## Gate order at Phase 8 (after assembly)
+
+1. `python scripts/validate_report.py --report [path] --format [chosen]`
+2. `python scripts/readability_check.py [path]` — exit 0, every report, never skipped
+3. `python scripts/verify_citations.py --report [path]`
+4. `python scripts/verify_citations_v2.py --dir [run_dir]`
+5. `python scripts/md_to_html.py [markdown_path]` — only after all gates pass
+
+Full thresholds: `reference/quality-gates.md`. Citation style: `references/citations.md`.

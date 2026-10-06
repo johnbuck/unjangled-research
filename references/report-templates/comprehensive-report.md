@@ -49,14 +49,14 @@
 - [Supporting point with evidence]
 - [Supporting point with evidence]
 
-**Sources**: [Source Title](url) [E:id]
+**Sources**: [N] [N] — batched at paragraph level where several claims share support
 
 ### [Major Theme 2]
 [Repeat structure]
 
 ## Data & Evidence
 
-[Tables, quotes, specific data points — each with a Source line and [E:id]]
+[Tables, quotes, specific data points — each with a numbered Source line]
 
 ## Implications
 
