@@ -174,8 +174,11 @@ class ReportValidator:
 
         unique_citations = set(citations)
 
-        if len(unique_citations) < 10:
-            self.warnings.append(f"Only {len(unique_citations)} unique sources cited (recommended: ≥10)")
+        if len(unique_citations) < self.spec["min_sources"]:
+            self.warnings.append(
+                f"Only {len(unique_citations)} unique sources cited for "
+                f"{self.fmt} (recommended: ≥{self.spec['min_sources']})"
+            )
 
         # Check for consecutive citation numbers
         citation_nums = sorted([int(c) for c in unique_citations])
@@ -217,8 +220,8 @@ class ReportValidator:
                 self.errors.append(f"   This makes the report UNUSABLE - complete bibliography required")
                 return False
 
-        # Count bibliography entries [1], [2], etc.
-        bib_entries = re.findall(r'^\[(\d+)\]', bib_section, re.MULTILINE)
+        # Count bibliography entries [1], [2], etc. (list-marker form accepted)
+        bib_entries = re.findall(r'^\s*[-*]?\s*\[(\d+)\]', bib_section, re.MULTILINE)
 
         if not bib_entries:
             self.errors.append("Bibliography has no entries")
@@ -316,7 +319,7 @@ class ReportValidator:
             return True  # Already caught in bibliography check
 
         bib_section = match.group(1)
-        bib_entries = re.findall(r'^\[(\d+)\]', bib_section, re.MULTILINE)
+        bib_entries = re.findall(r'^\s*[-*]?\s*\[(\d+)\]', bib_section, re.MULTILINE)
 
         source_count = len(set(bib_entries))
         floor = self.spec["min_sources"]

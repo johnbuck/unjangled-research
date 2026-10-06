@@ -25,6 +25,15 @@ def run_validator(fixture, fmt):
     return r.returncode == 0
 
 
+def run_validator_file(path, fmt):
+    r = subprocess.run(
+        [sys.executable, os.path.join(HERE, "..", "scripts", "validate_report.py"),
+         "--report", path, "--format", fmt],
+        capture_output=True, text=True,
+    )
+    return r.returncode == 0
+
+
 def test_each_fixture_passes_own_format():
     for fixture, fmt in CASES:
         assert run_validator(fixture, fmt), f"{fixture} must pass as {fmt}"
@@ -72,10 +81,30 @@ def test_claims_exclude_bibliography_each_format():
         assert not any("Journal" in s and "(202" in s for s in sents), fixture
 
 
+def test_list_marker_bibliography_accepted():
+    """Lily's repair-loop finding: '- [1] ...' entries must validate, not
+    just bare '[1] ...' lines."""
+    import tempfile
+    body = open(os.path.join(FIXTURES, "quick_brief.md")).read()
+    bib = "\n".join(
+        f"- [{n}] Author. (2024). Title {n}. Journal."
+        for n in (1, 2, 3)
+    )
+    text = body.split("## Bibliography")[0] + "## Bibliography\n" + bib + "\n"
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as f:
+        f.write(text)
+        path = f.name
+    try:
+        assert run_validator_file(path, "quick-brief"), "list-marker bib must pass"
+    finally:
+        os.unlink(path)
+
+
 if __name__ == "__main__":
     test_each_fixture_passes_own_format()
     test_each_fixture_fails_comprehensive_default()
     test_readability_gate_passes_each_format()
     test_html_conversion_each_format()
     test_claims_exclude_bibliography_each_format()
-    print("all 5 format tests ran and passed (3 fixtures x 5 checks)")
+    test_list_marker_bibliography_accepted()
+    print("all 6 format tests ran and passed")
