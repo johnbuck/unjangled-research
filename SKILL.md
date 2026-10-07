@@ -93,6 +93,7 @@ Mode Selection
 - `evidence.jsonl` — append-only evidence store with quotes and locators
 - `claims.jsonl` — atomic claim ledger with support status
 - `run_manifest.json` — query, mode, assumptions, provider config
+- `projects.jsonl` — discovery runs only: one row per candidate per `schemas/discovery_project.schema.json` (name, registry, tier, metrics with asOf dates); the report's comparison matrix renders FROM this file — never the reverse
 - HTML (McKinsey style, auto-opened)
 - PDF (professional print, auto-opened)
 

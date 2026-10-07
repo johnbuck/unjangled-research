@@ -56,6 +56,19 @@ FORMATS: Dict[str, dict] = {
         "word_range": (200, 400),
         "min_sources": 3,
     },
+    "discovery-catalog": {
+        "required": [
+            "Summary", "Selection Criteria", "Comparison Matrix",
+            "Project Dossiers", "Sources Consulted", "Bibliography",
+        ],
+        # Model Addenda is models-only and Freshness is a banner line, not a
+        # section — both conditional per the template, so neither is warned.
+        "recommended": [],
+        "summary_section": "Summary",
+        "summary_bounds": (30, 300),
+        "word_range": (800, 1500),
+        "min_sources": 8,
+    },
 }
 DEFAULT_FORMAT = "comprehensive-report"
 

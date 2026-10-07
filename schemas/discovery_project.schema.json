@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Discovery project entry (projects.jsonl, one per line)",
+  "type": "object",
+  "required": ["name", "registry", "url", "tier", "metrics", "status", "evaluatedAt"],
+  "properties": {
+    "name": { "type": "string" },
+    "registry": {
+      "type": "string",
+      "enum": ["github", "huggingface", "pypi", "npm", "crates", "dockerhub", "ollama", "repology", "curated-list", "other"]
+    },
+    "url": { "type": "string", "format": "uri" },
+    "tier": {
+      "type": "string",
+      "enum": ["adopt", "evaluate", "watch", "ruled-out"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "fading", "dormant", "archived", "unknown"]
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["metric", "value", "asOf"],
+        "properties": {
+          "metric": { "type": "string" },
+          "value": { "type": ["number", "string"] },
+          "asOf": { "type": "string", "format": "date" }
+        }
+      }
+    },
+    "signals": {
+      "type": "array",
+      "description": "Independent registries backing the tier (two required for adopt)",
+      "items": { "type": "string" }
+    },
+    "flags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "high-visibility, bus-factor, phone-home, telemetry-default, issue-ratio, unverified-metrics, model-license-restrictive"
+    },
+    "rejectionReason": {
+      "type": "string",
+      "description": "Required when tier is ruled-out (the one-line reason)"
+    },
+    "evaluatedAt": { "type": "string", "format": "date" }
+  }
+}

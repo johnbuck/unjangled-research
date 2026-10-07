@@ -13,6 +13,7 @@ CASES = [
     ("quick_brief.md", "quick-brief"),
     ("comparison.md", "comparison"),
     ("research_summary.md", "research-summary"),
+    ("discovery_catalog.md", "discovery-catalog"),
 ]
 
 
@@ -63,6 +64,7 @@ def test_html_conversion_each_format():
         "quick_brief.md": "Key Points",
         "comparison.md": "Overview",
         "research_summary.md": "Executive Summary",
+        "discovery_catalog.md": "Selection Criteria",
     }
     for fixture, fmt in CASES:
         text = open(os.path.join(FIXTURES, fixture)).read()

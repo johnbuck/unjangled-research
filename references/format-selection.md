@@ -5,6 +5,11 @@ Choose the right output format for your research needs. The Format Selection Tre
 ## Decision Tree
 
 ```
+Is this discovering tools, models, or libraries?
+(which X for Y / find popular projects for Y)
+  ├─ YES → Use Discovery Catalog
+  └─ NO ↓
+
 Is this comparing multiple options?
   ├─ YES → Use Comparison Format
   └─ NO ↓
@@ -22,6 +27,7 @@ Does this require formal/extensive documentation?
 
 | Format | Length | When to Use | Mandatory Sections | Template |
 |--------|--------|-------------|--------------------|----------|
+| Discovery Catalog | 800-1500 words | Tool/model/library discovery, popularity + tiering | Summary (tiered shortlist); Selection Criteria (frozen table); Comparison Matrix; Model Addenda (models only); Project Dossiers; Sources Consulted; Bibliography | [discovery-catalog.md](templates/discovery-catalog.md) |
 | Comparison | 800-1200 words | Evaluating options, decision support | Overview; Comparison Matrix (criteria × options); Detailed Analysis per option (Pros, Cons, Best for, Source); Recommendation with rationale; Sources | [comparison.md](templates/comparison.md) |
 | Quick Brief | 200-400 words | Time-sensitive, simple topics | Summary; Key Points; Action Items; Sources | [quick-brief.md](templates/quick-brief.md) |
 | Comprehensive Report | 1500+ words | Formal docs, strategic decisions | Executive Summary; Background & Context; Methodology; Key Findings by theme; Data & Evidence; Implications (short/long-term); Recommendations (Priority 1/2, each What/Why/How); Appendix; Sources | [comprehensive-report.md](templates/comprehensive-report.md) |

@@ -151,3 +151,13 @@ The full gate chain (validate, readability, verify_citations, verify_citations_v
 ## Citation Style
 
 The style is fixed, not a per-run choice: numbered `[N]` citations after the supported statement, evidence rows (not inline IDs) carrying the proof, grouped citations at 1-2 per sentence, and a trailing numbered Bibliography section. Every citation a reader follows must land on a run-folder artifact using only run-folder files.
+
+## Registry Citations (discovery reports)
+
+Discovery-catalog reports cite registries and curated lists as sources. Rules:
+
+- Every popularity number in prose or matrix carries `value (source, as-of date)` — e.g. `340 stars (GitHub, 2026-10-06)`, `12k downloads/30d (Hugging Face, 2026-10-06)`
+- A number with no source and date is "unverified" and the candidate caps at Watch
+- Registry pages and curated-list sections get numbered bibliography entries like any other source: `[7] GitHub. project repo metrics, retrieved 2026-10-06. https://github.com/...`
+- Excluded evidence classes (G2, AlternativeTo, affiliate listicles, AI-generated comparison sites) never appear in the bibliography — name them under Sources Consulted as rejected
+- The same numbers land in `projects.jsonl`; the matrix renders from it (see schemas/discovery_project.schema.json)
