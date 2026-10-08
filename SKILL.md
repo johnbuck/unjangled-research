@@ -67,13 +67,17 @@ Mode Selection
 - **Citation density:** Cite the 1–2 most authoritative sources inline per sentence. Batch additional supporting sources at the paragraph or finding level, not per sentence. A sentence carrying 3+ bracketed references is unreadable to a human reader.
 
 **Scripts:**
-- `python scripts/validate_report.py --report [path] --format [format]` — pass the format chosen in Phase 8 via format-selection.md (`quick-brief` / `comparison` / `research-summary` / `comprehensive-report`); each format has its own required sections, word targets, and source floors. Omitting `--format` assumes comprehensive-report.
+- `python scripts/validate_report.py --report [path] --format [format] --manifest [run_dir]/run_manifest.json` — the manifest enables the contested-facets gate (CAP-9): if `contested_facets` is non-empty, the report must contain a Perspectives/Debate section covering every listed facet — pass the format chosen in Phase 8 via format-selection.md (`quick-brief` / `comparison` / `research-summary` / `comprehensive-report`); each format has its own required sections, word targets, and source floors. Omitting `--format` assumes comprehensive-report.
 - `python scripts/verify_citations.py --report [path]`
 - `python scripts/verify_citations_v2.py --dir [run_dir]` (independent second network citation check)
 - `python scripts/readability_check.py [report_path]` (**MANDATORY — run on EVERY report, every time, before HTML/PDF generation; never skip, no exceptions.** Requires `textstat` — `pip install -r requirements.txt` if missing. Must exit 0; failures tell you exactly what to fix: pipeline-internals leakage → move narration to run manifest; citation density → 1-2 refs/sentence, batch the rest at paragraph level; sentence length / reading grade → split compound sentences, unchain appositive lists, prefer plain words)
 - `python scripts/md_to_html.py [markdown_path]`
 
 ---
+
+## Scope Contract (Phase 1, comprehensive runs)
+
+Every comprehensive run answers at planning: "which facets of this topic are actively disputed?" The answer lands in `run_manifest.json` → `contested_facets` ([] = no live disagreement found — an auditable position, not a skipped question). Non-empty → follow `references/contested-topics.md`: steelman every facet, describe-only unless the request asks for a choice.
 
 ## Output Contract
 

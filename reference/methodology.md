@@ -153,6 +153,8 @@ As results arrive:
 
 **Adaptive completion based on quality threshold:**
 
+**Contested-facet enumeration (comprehensive runs):** before leaving Phase 1, record which facets of the topic are actively disputed in `run_manifest.json` → `contested_facets`. `[]` is a claim you stand behind. Non-empty loads `references/contested-topics.md` for the sweep.
+
 **Quality gate:** Proceed to Phase 4 when FIRST threshold reached:
 - **Quick mode:** 10+ registered sources (retrieval target; citation floors are per-format) with avg credibility >60/100 OR 2 minutes elapsed
 - **Standard mode:** 15+ sources with avg credibility >60/100 OR 5 minutes elapsed

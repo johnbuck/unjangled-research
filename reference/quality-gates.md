@@ -67,7 +67,8 @@ quantizes below ~20 sentences — if a short-format run ever shows mean near
 
 **After generating ANY report, run this loop:**
 
-1. Run `python scripts/validate_report.py --report [path] --format [format]`
+1. Run `python scripts/validate_report.py --report [path] --format [format] --manifest [run_dir]/run_manifest.json`
+   - Comprehensive runs: if the manifest lists `contested_facets`, the report must carry a Perspectives/Debate section covering every facet (steelmanned, symmetric sourcing; verdicts only when the request asks for a choice — `references/contested-topics.md`)
 2. Run `python scripts/readability_check.py [path]` — exit 0 required
 3. Run `python scripts/verify_citations.py --report [path]`
 4. Run `python scripts/verify_citations_v2.py --dir [run_dir]`

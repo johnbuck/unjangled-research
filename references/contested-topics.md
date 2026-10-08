@@ -90,3 +90,40 @@ Grep your own draft for verdict words — reassuring, best-evidenced,
 strongest, steepest, compelling, solid, favorable, defensible, sobering —
 and their friends. Quoted wording stays; your voice goes. Run this as part
 of the Final Pass on every contested-topic report.
+
+## Steelman every listed facet (binding)
+
+For each facet in the run's `contested_facets`, the report constructs that
+side's STRONGEST case — the best evidence and reasoning its own proponents
+advance — not its weakest framing, not an opponent's summary:
+
+- Source each side's case from its flagship documents (position papers,
+  primary studies, regulator texts). A caricature sourced to the other
+  camp is a defect.
+- Steelmanning is construction, not description: assemble the side's best
+  argument as its advocates would, then cite where each load-bearing piece
+  comes from.
+- Symmetry is mechanical: equal depth, equal citation density, equal
+  limitation-noting for every side of every listed facet.
+
+## Verdicts (owner ruling: only when asked)
+
+Default posture: describe-only. The report never picks a winner on a
+contested facet unless the user's request asks for a choice. When it does:
+
+1. Steelman every side first (previous section) — the verdict never
+   precedes the cases.
+2. Then verdict, with reasons, explicitly labeled as the report's weighing
+   ("Weighing both cases, this report concludes… because…").
+3. State what evidence would change the verdict. A verdict with no
+   stated defeater is overconfident, not decisive.
+
+## Facet enumeration (scope phase, mandatory for comprehensive reports)
+
+At planning, every comprehensive report answers: "which facets of this
+topic are actively disputed?" The answer lands in
+`run_manifest.json` → `contested_facets` (array; `[]` means the agent
+found no live disagreement and stands behind that claim — an auditable
+position, not a skipped question). Load this file when the array is
+non-empty; the validator fails a report whose listed facets lack a
+covering Perspectives/Debate section.

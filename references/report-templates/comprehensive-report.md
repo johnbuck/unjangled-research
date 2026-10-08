@@ -54,6 +54,14 @@
 ### [Major Theme 2]
 [Repeat structure]
 
+## Contested Facets & Perspectives
+
+[ONLY when run_manifest.contested_facets is non-empty. One subsection per
+listed facet: each side's strongest case, sourced from its own flagship
+documents, symmetric depth and citation density. Verdicts only when the
+user's request asks for a choice — steelman first, then weigh, then state
+what evidence would change the call. Omit entirely when the list is empty.]
+
 ## Data & Evidence
 
 [Tables, quotes, specific data points — each with a numbered Source line]

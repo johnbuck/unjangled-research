@@ -76,7 +76,8 @@ DEFAULT_FORMAT = "comprehensive-report"
 class ReportValidator:
     """Validates research report quality"""
 
-    def __init__(self, report_path: Path, fmt: str = DEFAULT_FORMAT):
+    def __init__(self, report_path: Path, fmt: str = DEFAULT_FORMAT,
+                 manifest_path: Path = None):
         if fmt not in FORMATS:
             raise ValueError(
                 f"Unknown format '{fmt}'. Choose from: {', '.join(FORMATS)}"
@@ -85,8 +86,36 @@ class ReportValidator:
         self.spec = FORMATS[fmt]
         self.report_path = report_path
         self.content = self._read_report()
+        self.manifest_path = manifest_path
         self.errors: List[str] = []
         self.warnings: List[str] = []
+
+    def _check_contested_facets(self) -> bool:
+        """CAP-9: listed contested facets must be covered by a
+        Perspectives/Debate section (validator half of the gate)."""
+        if not self.manifest_path:
+            return True  # no manifest supplied -> gate not in scope
+        import json as _json
+        try:
+            manifest = _json.load(open(self.manifest_path))
+        except Exception as e:
+            self.errors.append(f"Cannot read manifest: {e}")
+            return False
+        facets = manifest.get("contested_facets") or []
+        if not facets:
+            return True
+        section_re = re.compile(
+            r'##.*(perspectiv|debate|contested|all[- ]sides|steelman)',
+            re.IGNORECASE,
+        )
+        if not section_re.search(self.content):
+            self.errors.append(
+                f"Manifest lists contested_facets ({len(facets)}) but the "
+                f"report has no Perspectives/Debate section covering them "
+                f"(CAP-9): {facets}"
+            )
+            return False
+        return True
 
     def _read_report(self) -> str:
         """Read report file"""
@@ -113,6 +142,7 @@ class ReportValidator:
             ("Word Count", self._check_word_count),
             ("Source Count", self._check_source_count),
             ("Broken Links", self._check_broken_references),
+            ("Contested Facets", self._check_contested_facets),
         ]
 
         for check_name, check_func in checks:
@@ -410,6 +440,13 @@ Examples:
     )
 
     parser.add_argument(
+        '--manifest', '-m',
+        type=str,
+        default=None,
+        help='Path to run_manifest.json — enables the contested-facets gate (CAP-9)'
+    )
+
+    parser.add_argument(
         '--format', '-f',
         type=str,
         default=DEFAULT_FORMAT,
@@ -429,7 +466,11 @@ Examples:
         print(f"❌ ERROR: Report file not found: {report_path}")
         sys.exit(1)
 
-    validator = ReportValidator(report_path, fmt=args.format)
+    manifest_path = Path(args.manifest) if args.manifest else None
+    if manifest_path is not None and not manifest_path.exists():
+        print(f"❌ ERROR: Manifest file not found: {manifest_path}")
+        sys.exit(1)
+    validator = ReportValidator(report_path, fmt=args.format, manifest_path=manifest_path)
     passed = validator.validate()
 
     sys.exit(0 if passed else 1)
