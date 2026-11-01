@@ -89,9 +89,14 @@ def test_output_classes_renamed():
 
 
 def test_no_origin_traces():
+    """The skill is the repo root; process material around it (archived review
+    copies, benchmarks, planning docs, private research output, vendored libs)
+    is out of scope for debranding."""
+    skip = {"vendor", "__pycache__", "archive", "benchmarks",
+            "_bmad-output", "_bmad", "bmad", "research"}
     hits = []
     for dirpath, dirnames, filenames in os.walk(ROOT):
-        dirnames[:] = [x for x in dirnames if x not in ("vendor", "__pycache__")]
+        dirnames[:] = [x for x in dirnames if x not in skip and not x.startswith(".")]
         for fn in filenames:
             path = os.path.join(dirpath, fn)
             try:

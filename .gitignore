@@ -1,31 +1,33 @@
-# Python
+_bmad/render/
+.opencode/
+.serena/
+benchmarks/deepresearch-bench/*.jsonl
+benchmarks/runs/
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
+vendor/**/__pycache__/
+benchmarks/hermes-val/
+
+# Local-only material
+research/
+.leak-denylist
 
 # Virtual environments
 venv/
 ENV/
 env/
 
-# IDE
+# IDE / OS
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
+*.py[cod]
+*$py.class
+*.so
+.Python
 .DS_Store
 Thumbs.db
-
-# Research output (kept local)
-*.json
-!schemas/*.json
-!tests/fixtures/**/*.json
-!themes/*/theme.json
 
 # Test output
 .pytest_cache/
