@@ -37,6 +37,10 @@ Inherited components, with modifications noted:
   `templates/report_template.md` and the `reference/` docs were updated for
   the readability gate, format selection, numbered citations and the
   renamed skill.
+- `templates/mckinsey_report_template.html`: inherited from upstream and
+  used for the HTML output until this fork replaced it with the themed
+  renderer (`scripts/render_report.py` driven by `themes/<name>/theme.json`);
+  the template file has been removed.
 
 ## Adapted: OpenAI Notion research-documentation skill
 

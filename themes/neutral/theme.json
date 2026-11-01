@@ -1,0 +1,38 @@
+{
+  "name": "neutral",
+  "colors": {
+    "surface": "#FFFFFF",
+    "ink": "#262626",
+    "body": "#404040",
+    "muted": "#737373",
+    "line": "#E5E5E5",
+    "line_strong": "#D4D4D4",
+    "fill": "#F5F5F5",
+    "accent": "#4F46E5",
+    "accent_ink": "#4338CA",
+    "accent_tints": ["#EEF2FF", "#E0E7FF", "#C7D2FE", "#A5B4FC"],
+    "secondary": "#475569",
+    "secondary_ink": "#1E293B",
+    "secondary_tints": ["#F8FAFC", "#F1F5F9", "#E2E8F0", "#CBD5E1"]
+  },
+  "fonts": {
+    "family": "Lato",
+    "fallback": "\"Segoe UI\", system-ui, -apple-system, sans-serif",
+    "css": "fonts.css"
+  },
+  "footer": {
+    "label": "{title} — {section}"
+  },
+  "motif": {
+    "enabled": true,
+    "tints_a": ["#EEF2FF", "#EEF2FF", "#EEF2FF", "#E0E7FF", "#E0E7FF", "#E0E7FF", "#C7D2FE", "#C7D2FE"],
+    "tints_b": ["#F8FAFC", "#F8FAFC", "#E2E8F0", "#E2E8F0", "#F1F5F9", "#CBD5E1"],
+    "ratio": 0.65,
+    "line": "#E0E0E0"
+  },
+  "qa": {
+    "allowed_colors": [],
+    "forbidden_colors": {},
+    "forbid_dark_surfaces": true
+  }
+}

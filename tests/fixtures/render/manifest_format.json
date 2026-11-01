@@ -1,0 +1,1 @@
+{"version": "3.0.0", "query": "spaced practice", "mode": "standard", "started_at": "2026-10-02T08:24:08Z", "report_dir": "/tmp", "artifact_paths": {"sources": "sources.jsonl", "evidence": "evidence.jsonl", "claims": "claims.jsonl", "report": "report.md"}, "format": "research-summary", "contested_facets": []}

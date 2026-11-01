@@ -62,7 +62,7 @@ Mode Selection
 
 **Templates:**
 - Report structure: [report_template.md](./templates/report_template.md) (default fallback)
-- HTML styling: [mckinsey_report_template.html](./templates/mckinsey_report_template.html)
+- HTML styling: themed renderer (`scripts/render_report.py`) with [themes/neutral/theme.json](./themes/neutral/theme.json) as the default theme — see [html-generation.md](./reference/html-generation.md)
 - **Format selection:** Before assembling the report, consult [format-selection.md](./references/format-selection.md) to choose the appropriate template from [references/report-templates/](./references/report-templates/) based on the question type. Use the default template only when no format-specific template matches.
 - **Citation density:** Cite the 1–2 most authoritative sources inline per sentence. Batch additional supporting sources at the paragraph or finding level, not per sentence. A sentence carrying 3+ bracketed references is unreadable to a human reader.
 
@@ -71,7 +71,12 @@ Mode Selection
 - `python scripts/verify_citations.py --report [path]`
 - `python scripts/verify_citations_v2.py --dir [run_dir]` (independent second network citation check)
 - `python scripts/readability_check.py [report_path]` (**MANDATORY — run on EVERY report, every time, before HTML/PDF generation; never skip, no exceptions.** Uses the vendored `textstat` in `vendor/`; no install needed. Must exit 0; failures tell you exactly what to fix: pipeline-internals leakage → move narration to run manifest; citation density → 1-2 refs/sentence, batch the rest at paragraph level; sentence length / reading grade → split compound sentences, unchain appositive lists, prefer plain words)
-- `python scripts/md_to_html.py [markdown_path]`
+- `scripts/md_to_html.py` — markdown converter used internally by the render model; not a delivery step
+- `python scripts/render_report.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [report.html]` — themed renderer; builds the render model in-process and writes a self-contained HTML report (`--theme <name|path>` overrides the default `neutral` theme)
+- `python scripts/render_deck.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [deck.html]` — optional themed slide deck from the same inputs as the report (`--theme <name|path>` as above); offer it when the user asks for slides, a presentation, or a deck — otherwise deliver the report alone
+- `python scripts/check_theme.py [report.html] [--theme <name|path>]` — theme QA gate on the rendered HTML; 0 errors required before delivery (exit 1 on any ERROR)
+
+**Phase 8 order (explicit):** `validate_report.py` → `readability_check.py` → `render_report.py` → `check_theme.py` — render only after the first two pass, deliver only at 0 QA errors. When the agent also produces the optional deck: `render_deck.py` → `check_theme.py` on the deck, after the report passes its gate. Full loop with the citation verifiers: [quality-gates.md](./reference/quality-gates.md).
 
 ---
 
@@ -98,7 +103,8 @@ Every comprehensive run answers at planning: "which facets of this topic are act
 - `claims.jsonl` — atomic claim ledger with support status
 - `run_manifest.json` — query, mode, assumptions, provider config
 - `projects.jsonl` — discovery runs only: one row per candidate per `schemas/discovery_project.schema.json` (name, registry, tier, metrics with asOf dates); the report's comparison matrix renders FROM this file — never the reverse
-- HTML (McKinsey style, auto-opened)
+- HTML report (themed, self-contained)
+- Slide deck (optional, themed, self-contained — when the user asked for one)
 - PDF (professional print, auto-opened)
 
 **Quality standards:**

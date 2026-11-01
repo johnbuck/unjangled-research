@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RenderModel",
+  "description": "One JSON document built from a finished report and its run manifest by build_render_model.py. Consumed by the report renderer (epic 2) and the deck renderer (epic 3).",
+  "type": "object",
+  "required": [
+    "title",
+    "subtitle",
+    "date",
+    "format",
+    "executive_summary",
+    "key_stats",
+    "sections",
+    "findings",
+    "contested_facets",
+    "sources"
+  ],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "First '# ' line of the report"
+    },
+    "subtitle": {
+      "type": ["string", "null"],
+      "description": "Italic tagline directly under the title, when present"
+    },
+    "date": {
+      "type": ["string", "null"],
+      "description": "The report's Date line, else the manifest's started_at date"
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "comparison",
+        "comprehensive-report",
+        "discovery-catalog",
+        "quick-brief",
+        "research-summary"
+      ]
+    },
+    "executive_summary": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paragraph strings from the format's summary section"
+    },
+    "key_stats": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "required": ["value", "label", "ref"],
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "Percentage, money, count with unit, or year range appearing verbatim in the report's summary or findings sections; never computed or invented"
+          },
+          "label": {
+            "type": "string",
+            "description": "Short label taken from the same sentence as the value"
+          },
+          "ref": {
+            "type": ["integer", "null"],
+            "description": "First [N] citation in that sentence, when one exists"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["heading", "level", "html"],
+        "properties": {
+          "heading": { "type": "string" },
+          "level": { "type": "integer", "enum": [2, 3] },
+          "html": {
+            "type": "string",
+            "description": "Fragment from md_to_html.py's converter; [N] citations kept as-is; bibliography excluded"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["headline", "body", "refs"],
+        "properties": {
+          "headline": { "type": "string" },
+          "body": {
+            "type": "string",
+            "description": "Plain-text lead of the finding, kept short"
+          },
+          "refs": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "description": "Citation numbers appearing in the finding"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "contested_facets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["facet", "sides"],
+        "properties": {
+          "facet": { "type": "string" },
+          "html": {
+            "type": "string",
+            "description": "Full converted HTML of the matched Perspectives subsection for this facet; empty string when no subsection matched"
+          },
+          "sides": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "summary"],
+              "properties": {
+                "label": { "type": "string" },
+                "summary": {
+                  "type": "string",
+                  "description": "One or two sentences from the report's Perspectives/Debate subsection for this facet"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["n", "title", "url", "publisher"],
+        "properties": {
+          "n": { "type": "integer", "minimum": 1 },
+          "title": { "type": "string" },
+          "url": { "type": ["string", "null"] },
+          "publisher": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

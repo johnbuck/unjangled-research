@@ -25,6 +25,7 @@ Thumbs.db
 *.json
 !schemas/*.json
 !tests/fixtures/**/*.json
+!themes/*/theme.json
 
 # Test output
 .pytest_cache/

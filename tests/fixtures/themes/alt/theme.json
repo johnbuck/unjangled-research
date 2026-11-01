@@ -1,0 +1,38 @@
+{
+  "name": "alt",
+  "colors": {
+    "surface": "#FCFCF9",
+    "ink": "#1F2A23",
+    "body": "#37423A",
+    "muted": "#6E7D73",
+    "line": "#E3E7E1",
+    "line_strong": "#CBD2CB",
+    "fill": "#F0F3EE",
+    "accent": "#1E6B3A",
+    "accent_ink": "#14522A",
+    "accent_tints": ["#E9F4EC", "#D2E7D8", "#B0D4BC", "#8CC3A0"],
+    "secondary": "#444F47",
+    "secondary_ink": "#2A332C",
+    "secondary_tints": ["#F2F4F1", "#E4E8E2", "#CBD2CA", "#ABB6AD"]
+  },
+  "fonts": {
+    "family": "Iowan Old Style",
+    "fallback": "Georgia, 'Times New Roman', serif"
+  },
+  "logo": "logo.svg",
+  "footer": {
+    "label": "{section} · {title}"
+  },
+  "motif": {
+    "enabled": false,
+    "tints_a": ["#E9F4EC", "#D2E7D8"],
+    "tints_b": ["#F2F4F1", "#E4E8E2"],
+    "ratio": 0.5,
+    "line": "#E3E7E1"
+  },
+  "qa": {
+    "allowed_colors": [],
+    "forbidden_colors": {},
+    "forbid_dark_surfaces": true
+  }
+}

@@ -137,6 +137,7 @@ Example: 10 findings x 1,500 words = 15,000 words total
 2. `python scripts/readability_check.py [path]` — exit 0, every report, never skipped
 3. `python scripts/verify_citations.py --report [path]`
 4. `python scripts/verify_citations_v2.py --dir [run_dir]`
-5. `python scripts/md_to_html.py [markdown_path]` — only after all gates pass
+5. `python scripts/render_report.py --report [path] --manifest [run_dir]/run_manifest.json --format [chosen] --out [html_path]` — only after all gates pass
+6. `python scripts/check_theme.py [html_path]` — 0 errors required before delivery
 
 Full thresholds: `reference/quality-gates.md`. Citation style: `references/citations.md`.

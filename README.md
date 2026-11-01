@@ -3,12 +3,14 @@
 A research skill for Claude Code and other agent harnesses that read
 `SKILL.md` skills. It produces citation-backed reports in a format matched to
 the question, with an evidence store on disk, two independent citation
-verifiers, and a readability gate every report must pass.
+verifiers, a readability gate every report must pass, and a themed,
+self-contained HTML deliverable gated by theme QA.
 
 **This is a fork.** It started as a hard fork of
 [199-biotechnologies/claude-deep-research-skill](https://github.com/199-biotechnologies/claude-deep-research-skill)
-at commit `f2f2c0f`. The pipeline, most scripts and the HTML/PDF output come
-from upstream. The format templates and citation guide are adapted from
+at commit `f2f2c0f`. The pipeline and most scripts come from upstream; the
+HTML output is this fork's themed renderer. The format templates and
+citation guide are adapted from
 OpenAI's Notion research-documentation skill (MIT, Notion Labs). See
 [ATTRIBUTION.md](ATTRIBUTION.md) for exactly what came from where and what
 changed.
@@ -29,6 +31,12 @@ changed.
   dense citation chains, long sentences, a high reading grade, or pipeline
   internals leaking into the text. Thresholds were calibrated against
   blind-judged reports.
+- **Themed HTML report.** `scripts/render_report.py` renders any finished
+  report, in any of the five formats, as a self-contained themed HTML page
+  (default theme `neutral`, see `themes/`), and `scripts/check_theme.py`
+  gates the output — 0 errors required before delivery.
+- **Optional slide deck.** `scripts/render_deck.py` renders the same finished
+  report as a self-contained themed deck, gated by the same theme QA.
 - **Contested topics.** `references/contested-topics.md` requires every facet
   of a contested question to be listed and steelmanned, and a verdict only when
   the user asks for one. `validate_report.py --manifest` enforces facet
@@ -91,12 +99,6 @@ to validate them, so the readability result is not an independent test.
 The judges' scale for the same upstream report drifted by 6-8 points
 between rounds, so cross-round numbers are less reliable than within-round
 gaps. Treat these results as a promising signal, not a benchmark claim.
-
-## Background
-
-Before building this, we read the ten most-installed public research skills
-end to end. [docs/survey.md](docs/survey.md) has the ranking and what we
-took from each.
 
 ## License
 

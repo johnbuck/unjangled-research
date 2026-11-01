@@ -1,0 +1,160 @@
+/* Research fork — general HTML pages (dashboards, reports, one-pagers).
+   Colors and fonts come from the theme's :root block (scripts/theme.py css_vars). */
+:root{ --rf-radius:12px; --rf-gap:24px; --rf-pad:32px }
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--rf-surface);color:var(--rf-body);font-family:var(--rf-type);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;color:var(--rf-ink);font-weight:700;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:clamp(28px,3.2vw,44px);line-height:1.1} h2{font-size:clamp(22px,2.2vw,30px);line-height:1.15} h3{font-size:18px;line-height:1.25}
+p{margin:0} a{color:var(--rf-accent)} strong{color:var(--rf-ink)}
+.rf-page{max-width:1280px;margin:0 auto;padding:var(--rf-pad);display:grid;gap:var(--rf-gap)}
+.rf-eyebrow{font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--rf-accent)}
+.rf-sub{font-size:18px;font-weight:300;color:var(--rf-body);max-width:70ch}
+.rf-muted{color:var(--rf-muted)} .rf-fine{font-size:13px;color:var(--rf-muted);line-height:1.4}
+.rf-logo{height:28px;width:auto;display:block}
+.rf-brand-name{font-size:20px;font-weight:700;letter-spacing:.02em;color:var(--rf-ink);line-height:28px}
+
+/* Header — text column and motif grid live in SEPARATE grid cells (no text over the motif) */
+.rf-header{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,38%);gap:48px;align-items:stretch;min-height:180px;border-bottom:1px solid var(--rf-line);padding-bottom:var(--rf-gap)}
+.rf-header-text{display:grid;gap:12px;align-content:center}
+.rf-header-art{position:relative;overflow:hidden;min-height:160px}
+.rf-header-art .motif{position:absolute;inset:0;width:100%;height:100%}
+@media (max-width:760px){.rf-header{grid-template-columns:1fr}.rf-header-art{display:none}}
+
+/* Filters / controls */
+.rf-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.rf-chip{font:600 13px var(--rf-type);color:var(--rf-ink);background:var(--rf-surface);border:1px solid var(--rf-line-strong);border-radius:999px;padding:6px 14px;cursor:pointer}
+.rf-chip:hover{border-color:var(--rf-accent);color:var(--rf-accent)}
+.rf-chip[aria-pressed="true"]{background:var(--rf-accent-t1);border-color:var(--rf-accent);color:var(--rf-accent-ink)}
+.rf-btn{font:700 14px var(--rf-type);background:var(--rf-accent);color:var(--rf-on-accent);border:0;border-radius:8px;padding:10px 18px;cursor:pointer}
+.rf-btn.secondary{background:var(--rf-surface);color:var(--rf-accent);border:1px solid var(--rf-accent)}
+select.rf-select{font:400 14px var(--rf-type);color:var(--rf-ink);border:1px solid var(--rf-line-strong);border-radius:8px;padding:7px 10px;background:var(--rf-surface)}
+
+/* KPI tiles — top rule accent, light numerals (matches deck stat tiles) */
+.rf-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--rf-gap)}
+.rf-kpi{display:grid;gap:6px;align-content:start;padding-top:14px;border-top:3px solid var(--rf-line)}
+.rf-kpi:nth-child(4n+1){border-top-color:var(--rf-accent)} .rf-kpi:nth-child(4n+2){border-top-color:var(--rf-accent-t4)} .rf-kpi:nth-child(4n+3){border-top-color:var(--rf-secondary)} .rf-kpi:nth-child(4n+4){border-top-color:var(--rf-line-strong)}
+.rf-kpi-label{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--rf-muted)}
+.rf-kpi-num{font-size:44px;font-weight:300;line-height:1;color:var(--rf-ink);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.rf-kpi-delta{font-size:14px;font-weight:600;color:var(--rf-accent-ink)} .rf-kpi-delta.down{color:var(--rf-secondary-ink)}
+.rf-kpi-note{font-size:13px;color:var(--rf-muted)}
+
+/* Cards / panels */
+.rf-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--rf-gap)}
+.rf-span-4{grid-column:span 4}.rf-span-6{grid-column:span 6}.rf-span-8{grid-column:span 8}.rf-span-12{grid-column:span 12}
+@media (max-width:900px){.rf-grid>*{grid-column:span 12}}
+.rf-card{background:var(--rf-surface);border:1px solid var(--rf-line);border-radius:var(--rf-radius);padding:24px;display:grid;gap:14px;align-content:start;min-width:0}
+.rf-card-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.rf-card.tint{background:var(--rf-accent-t1);border-color:transparent}
+.rf-callout{background:var(--rf-accent-t1);border-radius:var(--rf-radius);padding:18px 22px;display:grid;gap:6px}
+.rf-callout .rf-eyebrow{color:var(--rf-accent-ink)}
+.rf-callout.secondary{background:var(--rf-secondary-t1)} .rf-callout.secondary .rf-eyebrow{color:var(--rf-secondary-ink)}
+
+/* Bars (CSS-only horizontal bar chart) */
+.rf-bars{display:grid;gap:10px}
+.rf-bar{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,2fr) 52px;gap:12px;align-items:center;font-size:14px}
+.rf-bar-track{height:10px;background:var(--rf-fill);border-radius:999px;overflow:hidden}
+.rf-bar-fill{display:block;height:100%;width:var(--w);background:var(--rf-accent);border-radius:999px}
+.rf-bar.alt .rf-bar-fill{background:var(--rf-secondary)} .rf-bar.dim .rf-bar-fill{background:var(--rf-line-strong)}
+.rf-bar-val{text-align:right;font-weight:700;color:var(--rf-ink);font-variant-numeric:tabular-nums}
+
+/* Tables */
+.rf-table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.rf-table th{text-align:left;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--rf-muted);padding:10px 12px;border-bottom:1px solid var(--rf-line-strong)}
+.rf-table td{padding:12px;border-bottom:1px solid var(--rf-line);color:var(--rf-body)}
+.rf-table td.num,.rf-table th.num{text-align:right}
+.rf-table tbody tr:hover{background:var(--rf-fill)}
+.rf-pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;background:var(--rf-accent-t1);color:var(--rf-accent-ink)}
+.rf-pill.secondary{background:var(--rf-secondary-t2);color:var(--rf-secondary-ink)} .rf-pill.neutral{background:var(--rf-fill);color:var(--rf-muted)}
+
+/* Header meta line (dates, source confidentiality label) */
+.rf-meta{font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--rf-muted);padding-top:4px}
+
+/* Research one-pager visuals (page-sized versions of the deck dot grid, visit squares, stacked bar) */
+.rf-num{font-size:13px;font-weight:700;letter-spacing:.12em;color:var(--rf-accent)}
+.rf-dots{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;max-width:260px}
+.rf-dots i{aspect-ratio:1;border-radius:50%;background:var(--rf-line)}
+.rf-dots i.on{background:var(--rf-accent)} .rf-dots i.unsure{background:var(--rf-surface);box-shadow:inset 0 0 0 1.5px var(--rf-line-strong)}
+.rf-squares{display:flex;gap:5px}
+.rf-squares i{width:18px;height:18px;border-radius:3px;background:var(--rf-surface);box-shadow:inset 0 0 0 1.5px var(--rf-line-strong)}
+.rf-squares i.on{background:var(--rf-accent);box-shadow:none}
+.rf-stack{display:flex;height:22px;border-radius:999px;overflow:hidden;background:var(--rf-fill)}
+.rf-stack span{display:block;height:100%;width:var(--w)}
+.rf-stack .s1{background:var(--rf-accent)} .rf-stack .s2{background:var(--rf-accent-t4)} .rf-stack .s3{background:var(--rf-secondary)} .rf-stack .s4{background:var(--rf-line)}
+.rf-legend{display:grid;gap:8px;font-size:14px}
+.rf-legend div{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:10px;align-items:center}
+.rf-legend i{width:12px;height:12px;border-radius:3px}
+.rf-legend b{color:var(--rf-ink);font-variant-numeric:tabular-nums}
+.rf-legend i.s1{background:var(--rf-accent)} .rf-legend i.s2{background:var(--rf-accent-t4)} .rf-legend i.s3{background:var(--rf-secondary)} .rf-legend i.s4{background:var(--rf-line)} .rf-legend i.on{background:var(--rf-accent)} .rf-legend i.off{background:var(--rf-line)} .rf-legend i.unsure{background:var(--rf-surface);box-shadow:inset 0 0 0 1.5px var(--rf-line-strong)}
+
+/* Footer rule — brand mark far left when one is supplied, then label; page/number alone far right */
+.rf-footer{display:flex;justify-content:space-between;align-items:center;gap:24px;padding-top:14px;border-top:1px solid var(--rf-line);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--rf-muted)}
+.rf-footer-left{display:flex;align-items:center;gap:14px;min-width:0}
+.rf-footer-left .rf-logo{height:18px}
+.rf-footer-left .rf-brand-name{font-size:12px;font-weight:700;color:var(--rf-ink)}
+.rf-footer-left>span:not(.rf-brand-name){padding-left:14px;border-left:1px solid var(--rf-line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rf-footer-left:not(.has-mark)>span:not(.rf-brand-name){padding-left:0;border-left:0}
+.rf-footer-right{font-weight:700;font-variant-numeric:tabular-nums}
+
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+@media print{@page{size:auto !important;}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.rf-toolbar{display:none}.rf-card,.rf-callout,section{break-inside:avoid}}
+
+/* Report renderer (render_report.py) — themed page report built from a render model */
+.rf-report{max-width:1000px;width:100%;display:grid;gap:var(--rf-gap)}
+.rf-doc{display:grid;gap:var(--rf-gap)}
+.rf-sec{display:grid;gap:14px;min-width:0;scroll-margin-top:16px}
+.rf-sec.rf-l3{border-left:3px solid var(--rf-line);padding-left:18px}
+.rf-sec p{max-width:78ch}
+.rf-doc ul,.rf-doc ol{margin:0;padding-left:24px;display:grid;gap:6px;max-width:74ch}
+.rf-doc code{background:var(--rf-fill);border-radius:4px;padding:1px 5px;font-size:.92em}
+.rf-doc table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.rf-doc table th{text-align:left;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--rf-muted);padding:10px 12px;border-bottom:1px solid var(--rf-line-strong)}
+.rf-doc table td{padding:10px 12px;border-bottom:1px solid var(--rf-line);color:var(--rf-body)}
+.rf-cite{font-weight:700;text-decoration:none;font-variant-numeric:tabular-nums}
+
+/* Executive summary block */
+.rf-summary{background:var(--rf-accent-t1);border-radius:var(--rf-radius);padding:24px 28px;display:grid;gap:12px}
+.rf-summary .rf-eyebrow{color:var(--rf-accent-ink)}
+.rf-summary-body{display:grid;gap:10px}
+.rf-summary-body p{font-size:17px;line-height:1.6;max-width:75ch}
+
+/* Compact table of contents */
+.rf-toc{border:1px solid var(--rf-line);border-radius:var(--rf-radius);padding:18px 24px;display:grid;gap:10px}
+.rf-toc-title{font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--rf-muted)}
+.rf-toc ol{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 18px}
+.rf-toc li{min-width:0}
+.rf-toc a{display:block;color:var(--rf-ink);text-decoration:none;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rf-toc a:hover{color:var(--rf-accent)}
+.rf-toc .rf-toc-num{color:var(--rf-accent);font-weight:700;margin-right:8px;font-variant-numeric:tabular-nums}
+
+/* Perspectives — one panel per side of a contested facet */
+.rf-persp{display:grid;gap:16px;scroll-margin-top:16px}
+.rf-persp-list{display:grid;gap:var(--rf-gap)}
+.rf-persp-facet{display:grid;gap:12px}
+.rf-persp-facet-title{font-size:18px}
+.rf-persp-sides{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.rf-persp-side{border-radius:var(--rf-radius);padding:16px 18px;display:grid;gap:8px;align-content:start}
+.rf-persp-side.a{background:var(--rf-accent-t1)} .rf-persp-side.a .rf-eyebrow{color:var(--rf-accent-ink)}
+.rf-persp-side.b{background:var(--rf-secondary-t1)} .rf-persp-side.b .rf-eyebrow{color:var(--rf-secondary-ink)}
+.rf-persp-text{font-size:14px;line-height:1.55}
+
+/* Numbered bibliography with ref-N anchors */
+.rf-bib{display:grid;gap:12px;border-top:1px solid var(--rf-line);padding-top:var(--rf-gap);scroll-margin-top:16px}
+.rf-bib .section-title{font-size:20px}
+.rf-refs{display:grid}
+.rf-ref{display:grid;grid-template-columns:48px minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid var(--rf-line);break-inside:avoid;scroll-margin-top:16px}
+.rf-ref-num{font-weight:700;color:var(--rf-accent);font-variant-numeric:tabular-nums}
+.rf-ref-body{font-size:14px;line-height:1.5}
+.rf-ref-link{color:var(--rf-ink);font-weight:600;text-decoration:none}
+.rf-ref-link:hover{color:var(--rf-accent);text-decoration:underline}
+.rf-ref-pub{color:var(--rf-muted)}
+
+/* Print — the report stays readable on paper: the motif SVG is static (never
+   animated), citations print as plain [N] text with no URL expansion, and
+   card-like rows keep together across page breaks */
+@media print{
+ .rf-report{max-width:none}
+ .rf-toc a,.rf-cite,.rf-ref-link{color:var(--rf-ink)}
+ .rf-cite{text-decoration:none}
+ .rf-kpi,.rf-persp-side,.rf-summary{break-inside:avoid}
+ .rf-toc ol{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

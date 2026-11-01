@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "query": "does alpha cause beta",
+  "mode": "deep",
+  "contested_facets": [
+    "Alpha vs. beta: does alpha cause beta, or do confounders and reverse causation explain the association?"
+  ]
+}

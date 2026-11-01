@@ -1,103 +1,137 @@
-# HTML Generation: McKinsey Style Report
+# HTML Generation: Themed Report
 
 ## Design Principles
 
-- Sharp corners (NO border-radius)
-- Muted corporate colors (navy #003d5c, gray #f8f9fa)
-- Ultra-compact layout
-- Info-first structure
-- 14px base font, compact spacing
-- No decorative gradients or colors
+- Page-style report rendered from the finished markdown by `scripts/render_report.py`
+- One self-contained HTML file: fonts and assets embedded, zero external references
+- Styling comes from the theme (`themes/<name>/theme.json`) — never edit CSS
+- Info-first structure: header, KPI cards, sections in order, linked citations, anchored bibliography
 - NO EMOJIS in final HTML
 
 ---
 
 ## Generation Steps
 
-### Step 1: Read McKinsey Template
-Load template from: `./templates/mckinsey_report_template.html`
+The agent runs every command from the skill directory (the folder containing
+`scripts/` and `themes/`); paths below are relative to it.
 
-### Step 2: Extract Key Metrics
-Extract 3-4 key quantitative findings for dashboard display at top.
-
-### Step 3: Convert MD to HTML
-
-Use Python script:
-```bash
-cd ~/.claude/skills/unjangled-research
-python scripts/md_to_html.py [markdown_report_path]
-```
-
-**Script outputs two parts:**
-- **Part A ({{CONTENT}}):** All sections except Bibliography
-- **Part B ({{BIBLIOGRAPHY}}):** Bibliography section only
-
-**Script handles all conversion:**
-- Headers: `##` -> `<div class="section"><h2 class="section-title">`
-- Headers: `###` -> `<h3 class="subsection-title">`
-- Lists: Markdown bullets -> `<ul><li>` with nesting
-- Tables: Markdown tables -> `<table>` with thead/tbody
-- Paragraphs: Text wrapped in `<p>` tags
-- Bold/italic: `**text**` -> `<strong>`, `*text*` -> `<em>`
-- Citations: [N] preserved for tooltip conversion
-
-### Step 4: Add Citation Tooltips (Optional)
-
-Attribution Gradients - wrap each [N] citation:
-```html
-<span class="citation">[N]
-  <span class="citation-tooltip">
-    <div class="tooltip-title">[Source Title]</div>
-    <div class="tooltip-source">[Author/Publisher]</div>
-    <div class="tooltip-claim">
-      <div class="tooltip-claim-label">Supports Claim:</div>
-      [Extract sentence with this citation]
-    </div>
-  </span>
-</span>
-```
-NOTE: This step is optional for speed. Basic [N] citations are sufficient.
-
-### Step 5: Replace Template Placeholders
-
-| Placeholder | Content |
-|-------------|---------|
-| {{TITLE}} | Report title (from first ## heading) |
-| {{DATE}} | Generation date (YYYY-MM-DD) |
-| {{SOURCE_COUNT}} | Number of unique sources |
-| {{METRICS_DASHBOARD}} | Metrics HTML from step 2 |
-| {{CONTENT}} | HTML from Part A |
-| {{BIBLIOGRAPHY}} | HTML from Part B |
-
-### Step 6: Verify HTML
+### Step 1: Readability gate (unchanged rule)
 
 ```bash
-python scripts/verify_html.py --html [html_path] --md [md_path]
+python3 scripts/readability_check.py [report_path]
 ```
-- Pass: Proceed to open
-- Fail: Fix errors and re-run
 
-### Step 7: Open in Browser
+Must exit 0 before any HTML is generated — every report, every format, never
+skipped. On failure the gate output names the repair; fix the prose and
+re-run. Full thresholds: `reference/quality-gates.md`.
+
+### Step 2: Render the themed report
+
 ```bash
-open [html_path]
+python3 scripts/render_report.py --report [report.md] --manifest [run_dir]/run_manifest.json --format [format] --out [report.html]
 ```
+
+- `--report` takes the finished report markdown; the render model is built
+  in-process, so no separate model step is needed.
+- `--manifest` points at the run's `run_manifest.json` (optional; supplies
+  the date, the format default, and `contested_facets` for the Perspectives
+  blocks).
+- `--format` is the format chosen in Phase 8 (`quick-brief` / `comparison` /
+  `research-summary` / `comprehensive-report` / `discovery-catalog`);
+  default: the manifest value, else inferred.
+- `--theme <name|path>` selects a theme: a name under `themes/` or a path to
+  a theme folder. Default: `neutral`.
+- `--out` writes a single self-contained HTML file.
+
+The renderer emits the header (title, subtitle, date, format eyebrow, motif),
+KPI cards when the report carries key stats, the executive summary, sections
+in order, a Perspectives block per contested facet, a numbered bibliography
+whose `id="ref-N"` anchors the in-text `[N]` citations link to, and a footer
+from the theme's label template.
+
+### Step 3: Theme QA gate
+
+```bash
+python3 scripts/check_theme.py [report.html] [--theme <name|path>]
+```
+
+Must report 0 errors before the report is delivered. Fix every ERROR and
+re-render; resolve WARNs or record the justification in the run manifest.
+Exit 0 = no errors (WARNs allowed); exit 1 = at least one ERROR. What the
+gate checks: `reference/quality-gates.md`. Pass `--theme` when Step 2 used a
+non-default theme.
+
+### Step 4: Open (optional)
+
+Open the HTML for the user when the environment allows it (for example
+`open` on macOS, `xdg-open` on Linux).
 
 ---
 
-## PDF Generation
+## Optional: slide deck
 
-**Option A: WeasyPrint Direct (Preferred)**
+When the user asks for slides, a presentation, or a deck, the agent renders
+one from the same inputs as the report (otherwise the report alone is
+delivered). Render it after the report has passed Steps 1-3:
 
-1. Create print-optimized HTML following `./reference/weasyprint_guidelines.md`
-2. Critical CSS:
-   - `page-break-inside: avoid` on tables, boxes
-   - `page-break-after: avoid` on headings
-   - `orphans: 3; widows: 3` on paragraphs
-   - Use `display: table` not Flexbox/Grid
-   - Font sizes in pt (10pt body, 8pt citations)
-3. Generate: `weasyprint [html_path] [pdf_path]`
-4. Open: `open [pdf_path]`
+```bash
+python3 scripts/render_deck.py --report [report.md] --manifest [run_dir]/run_manifest.json --format [format] --out [deck.html]
+```
 
-**Option B: generating-pdf Skill**
+`--report`, `--manifest`, `--format`, and `--theme <name|path>` behave exactly
+as in Step 2; the render model is built in-process. The deck is one
+self-contained HTML file (cover, statement and stat tiles, finding slides,
+one slide per contested facet, sources).
 
-Use Task tool with general-purpose agent, invoke generating-pdf skill.
+Gate the deck the same way:
+
+```bash
+python3 scripts/check_theme.py [deck.html] [--theme <name|path>]
+```
+
+`check_theme.py` must report 0 errors on the deck too before it is delivered
+(same ERROR/WARN rules as Step 3). Fix problems in the report or the theme
+and re-render — never by editing the generated HTML.
+
+---
+
+## Adding a theme
+
+Copy `themes/neutral/` to `themes/<name>/` and edit `theme.json`. The
+renderer generates all CSS from the theme — never edit CSS, and never patch
+the generated HTML. `fonts.css` (the `@font-face` rules) ships inside the
+theme folder and is embedded at render time; a logo file and its license can
+live there too.
+
+| `theme.json` key | Controls |
+|---|---|
+| `name` | theme identifier used by `--theme` |
+| `colors` | palette: `surface`, `ink`, `body`, `muted`, `line`, `line_strong`, `fill`, `accent` (+ `accent_ink`, `accent_tints`), `secondary` (+ `secondary_ink`, `secondary_tints`) |
+| `fonts` | `family`, `fallback` stack, `css` (the `@font-face` file to embed) |
+| `footer` | footer label template (`{title}`, `{section}`) |
+| `motif` | background motif: `enabled`, `tints_a`, `tints_b`, `ratio`, `line` |
+| `qa` | gate rules: `allowed_colors`, `forbidden_colors` (hex → reason), `forbid_dark_surfaces` |
+
+A new theme is exercised only through the renderer: re-run Step 2 with
+`--theme <name>` and gate the output with Step 3.
+
+---
+
+## PDF Generation (optional)
+
+**Option A: WeasyPrint (preferred)**
+
+1. Render and gate the themed report first (Steps 1-3). The HTML is
+   self-contained, so WeasyPrint needs no network access.
+2. Generate: `weasyprint [report.html] [report.pdf]`
+3. Open the PDF.
+
+If pagination is poor, consult
+[weasyprint_guidelines.md](./weasyprint_guidelines.md); fix problems in the
+theme (`theme.json`) or the report, never by editing the generated HTML.
+Requires WeasyPrint (`pip install weasyprint`).
+
+**Option B: another local HTML-to-PDF tool**
+
+Any converter that renders local, self-contained HTML works; the report
+pulls nothing from the network.

@@ -63,6 +63,32 @@ pass density; the pct3plus gate covers this at full document length but
 quantizes below ~20 sentences — if a short-format run ever shows mean near
 1.6 with high 3+ concentration, revisit before shipping.
 
+### Theme QA Gate (rendered HTML)
+
+```bash
+python scripts/check_theme.py [html_path] [--theme <name|path>]
+```
+
+Run on every rendered HTML report, after `render_report.py` and only after
+the readability gate passes. Default theme: `neutral`; pass `--theme` to
+match a non-default render.
+
+**ERROR — delivery blocker (exit 1 on any ERROR):**
+- A color in the theme's `qa.forbidden_colors`
+- Any external reference: `http(s)://` in `src=`, `@import`, `url()`, or a
+  non-`<a>` `href=` (plain `<a href="https://…">` bibliography links are
+  exempt — the file itself must be self-contained)
+- A font family not declared in the theme
+- Text placed inside the motif's keep-out
+
+**WARN — resolve or justify (does not fail the gate):**
+- A color outside the theme palette plus `qa.allowed_colors`
+- A dark surface when `qa.forbid_dark_surfaces` is set
+
+Exit 0 = no ERRORs (WARNs allowed); exit 1 = at least one ERROR. Fix ERRORs
+in the report or the theme and re-render — never by editing the generated
+HTML.
+
 ### Validation Loop Protocol
 
 **After generating ANY report, run this loop:**
@@ -72,11 +98,13 @@ quantizes below ~20 sentences — if a short-format run ever shows mean near
 2. Run `python scripts/readability_check.py [path]` — exit 0 required
 3. Run `python scripts/verify_citations.py --report [path]`
 4. Run `python scripts/verify_citations_v2.py --dir [run_dir]`
-5. If ANY fails:
+5. Render: `python scripts/render_report.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [html_path]`
+6. Run `python scripts/check_theme.py [html_path]` — 0 errors required
+7. If ANY fails:
    - Read error output carefully — the gates name the repair
    - Fix the specific issues identified
    - Re-run ALL validators
-6. Maximum 3 retry cycles. If still failing after 3 cycles: STOP and report issues to user.
+8. Maximum 3 retry cycles. If still failing after 3 cycles: STOP and report issues to user.
 
 **Do NOT skip validation.** Every report must pass every gate before delivery.
 
