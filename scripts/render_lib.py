@@ -292,7 +292,7 @@ def demo_deck(theme="neutral"):
     return deck("Sample findings review — Sample data", slides, theme=theme)
 
 def _cli():
-    ap = argparse.ArgumentParser(description="Render the research-fork engine demo (sample data).")
+    ap = argparse.ArgumentParser(description="Render the unjangled-research engine demo (sample data).")
     ap.add_argument("--demo", metavar="DIR", help="write demo-page.html and demo-deck.html into DIR")
     ap.add_argument("--theme", default="neutral", metavar="NAME_OR_PATH",
                     help="theme name under themes/ or a theme folder path (default: neutral)")

@@ -1,7 +1,7 @@
 """Engine adoption checks: the demo renders both files offline-complete
 (no external src/href/@import/url references), esc() escapes HTML, the motif
 SVG carries no text elements, the rendered classes are fully renamed, and no
-file under skills/research-fork carries a trace of the engine's origin
+file under skills/unjangled-research carries a trace of the engine's origin
 (forbidden names are built by concatenation so this file cannot match its
 own pattern; vendor/ dictionaries are skipped — pre-existing corpus data)."""
 import os
