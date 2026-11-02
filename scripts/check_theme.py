@@ -1,17 +1,18 @@
-"""Theme QA gate for rendered HTML output (every rule reads from the theme).
+"""Theme QA gate for rendered HTML and PowerPoint output (every rule
+reads from the theme).
 
-Checks one or more self-contained themed HTML files against the theme that
-produced them, generalizing the adopted engine's brand checker: palette,
-fonts, external references, motif text safety, and dark-surface rules all
-come from the theme contract (scripts/theme.py), so the same gate serves
-every theme.
+Checks one or more self-contained themed HTML files, or PowerPoint
+packages (.pptx), against the theme that produced them, generalizing
+the adopted engine's brand checker: palette, fonts, external
+references, motif text safety, and dark-surface rules all come from the
+theme contract (scripts/theme.py), so the same gate serves every theme.
 
 Usage:
-    python3 check_theme.py report.html [more.html ...] [--theme neutral|path/to/theme]
+    python3 check_theme.py report.html deck.pptx [more ...] [--theme neutral|path/to/theme]
 
 Exit 1 on any ERROR, 0 with warnings only, 2 when the theme cannot load.
 
-ERROR:
+ERROR (HTML):
   * a color from the theme's qa.forbidden_colors appears (reason included)
   * an external resource reference: http(s):// or protocol-relative // in
     src=, href= of any non-<a> element (plain <a href="https://..."> hyperlinks
@@ -22,16 +23,37 @@ ERROR:
     cover text keep-out rectangles (COVER_KEEPOUTS from scripts/motif.py),
     or a <text>/<foreignObject> element inside a motif svg
 
-WARN:
+WARN (HTML):
   * a hex color outside the theme palette (colors + tints + motif tints/line
     + qa.allowed_colors + #FFFFFF/#000000; 3-digit forms normalized, hex
     inside base64 font/image data ignored)
   * a dark body/slide/section background (relative luminance < 0.2) when
     qa.forbid_dark_surfaces is true
+
+ERROR (.pptx; slides, masters, layouts, theme parts, and every .rels are
+inspected):
+  * a color from the theme's qa.forbidden_colors appears as an srgbClr
+    val, case-insensitive (part and reason included)
+  * a Relationship with TargetMode="External" whose Type is not the
+    hyperlink type
+  * a latin/ea/cs typeface (a:latin, a:ea, a:cs, including the theme
+    fontScheme) that is not the theme's fonts.family, one of its
+    fonts.fallback families, a generic family, or a theme placeholder
+    like "+mj-lt"/"+mn-lt" (empty typeface="" is fine)
+  * a slide with no non-whitespace <a:t> text
+  * a package that is not a valid zip, a part that cannot be read
+    (corrupt member), or lacks [Content_Types].xml or ppt/presentation.xml
+
+WARN (.pptx):
+  * an srgbClr outside the theme palette (colors + tints + motif tints/line
+    + qa.allowed_colors + FFFFFF/000000)
 """
 import argparse
 import re
 import sys
+import xml.etree.ElementTree as ET
+import zipfile
+import zlib
 
 from motif import COVER_KEEPOUTS
 from theme import load_theme
@@ -45,6 +67,8 @@ SURFACE_WORDS = {"body", "slide", "section", "cover"}
 DATA_URI = re.compile(r"data:[^)\"'\s]*")
 HEX6 = re.compile(r"#[0-9A-Fa-f]{6}\b")
 HEX3 = re.compile(r"#[0-9A-Fa-f]{3}\b(?![0-9A-Fa-f])")
+HEXVAL6 = re.compile(r"^[0-9A-Fa-f]{6}$")
+HYPERLINK_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 INLINE_TAGS = ("body", "section", "div", "main", "article", "aside", "header", "footer")
 
 
@@ -142,8 +166,98 @@ def _font_declarations(src, stripped):
     return decls
 
 
+def _local(tag):
+    return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+
+
+def _pptx_scan_parts(names):
+    """The XML parts to inspect: slides, masters, layouts, and theme parts."""
+    wanted = []
+    for folder in ("slides", "slideMasters", "slideLayouts", "theme"):
+        prefix = f"ppt/{folder}/"
+        wanted += [n for n in names if n.startswith(prefix) and n.endswith(".xml")
+                   and "/" not in n[len(prefix):]]
+    return sorted(set(wanted))
+
+
+def check_pptx(path, theme):
+    """(errors, warnings) for one PowerPoint package; messages carry no
+    file prefix."""
+    try:
+        zf = zipfile.ZipFile(path)
+    except zipfile.BadZipFile:
+        return ["not a PowerPoint package (not a valid zip archive)"], []
+    except OSError as exc:
+        return [f"cannot read file ({exc})"], []
+    errs, warns = [], []
+    with zf:
+        names = zf.namelist()
+        for required in ("[Content_Types].xml", "ppt/presentation.xml"):
+            if required not in names:
+                errs.append(f"package is missing {required}")
+        trees = {}
+        for name in _pptx_scan_parts(names):
+            try:
+                trees[name] = ET.fromstring(zf.read(name).decode("utf-8"))
+            except (zipfile.BadZipFile, zlib.error) as exc:
+                errs.append(f"{name} cannot be read ({exc})")
+            except (ET.ParseError, UnicodeDecodeError) as exc:
+                errs.append(f"{name} is not valid XML ({exc})")
+        forbidden = {_norm_hex(h): reason for h, reason in theme["qa"]["forbidden_colors"].items()}
+        allowed = theme_palette(theme)
+        families = theme_families(theme)
+        for name, root in sorted(trees.items()):
+            has_text = False
+            for el in root.iter():
+                tag = _local(el.tag)
+                if tag == "srgbClr":
+                    val = (el.get("val") or "").strip()
+                    if not HEXVAL6.match(val):
+                        continue
+                    h = "#" + val.upper()
+                    if h in forbidden:
+                        errs.append(f"forbidden color {h} in {name} ({forbidden[h]})")
+                    elif h not in allowed:
+                        warns.append(f"color {h} in {name} is not in the theme palette")
+                elif tag in ("latin", "ea", "cs"):
+                    face = el.get("typeface")
+                    if face is None:
+                        continue
+                    face = face.strip()
+                    bare = face.strip("\"'").lower()
+                    if (not face or face.startswith("+")
+                            or bare in families or bare in GENERIC_FAMILIES):
+                        continue
+                    errs.append(f"typeface '{face}' in {name} "
+                                f"is not declared in theme '{theme['name']}'")
+                elif tag == "t" and (el.text or "").strip():
+                    has_text = True
+            if name.startswith("ppt/slides/") and not has_text:
+                errs.append(f"slide {name} has no text")
+        for name in sorted(n for n in names if n.endswith(".rels")):
+            try:
+                root = ET.fromstring(zf.read(name).decode("utf-8"))
+            except (zipfile.BadZipFile, zlib.error) as exc:
+                errs.append(f"{name} cannot be read ({exc})")
+                continue
+            except (ET.ParseError, UnicodeDecodeError) as exc:
+                errs.append(f"{name} is not valid XML ({exc})")
+                continue
+            for rel in root.iter():
+                if _local(rel.tag) != "Relationship" or rel.get("TargetMode") != "External":
+                    continue
+                rtype = rel.get("Type") or ""
+                if rtype != HYPERLINK_REL:
+                    errs.append(f"external relationship of type {rtype} in {name} "
+                                f"({rel.get('Target')})")
+    return _uniq(errs), _uniq(warns)
+
+
 def check_file(path, theme):
-    """(errors, warnings) for one rendered HTML file; messages carry no file prefix."""
+    """(errors, warnings) for one rendered HTML file or .pptx package;
+    messages carry no file prefix."""
+    if path.lower().endswith(".pptx"):
+        return check_pptx(path, theme)
     try:
         with open(path, encoding="utf-8") as f:
             src = f.read()
@@ -255,8 +369,10 @@ def check_file(path, theme):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Theme QA gate for rendered HTML output.")
-    ap.add_argument("html", nargs="+", metavar="HTML", help="rendered HTML file(s) to check")
+    ap = argparse.ArgumentParser(
+        description="Theme QA gate for rendered HTML and PowerPoint output.")
+    ap.add_argument("files", nargs="+", metavar="FILE",
+                    help="rendered HTML file(s) and/or .pptx package(s) to check")
     ap.add_argument("--theme", default="neutral", metavar="NAME_OR_PATH",
                     help="theme name under themes/ or a theme folder path (default: neutral)")
     args = ap.parse_args(argv)
@@ -265,7 +381,7 @@ def main(argv=None):
     except ValueError as exc:
         print(f"cannot load theme {args.theme!r}: {exc}", file=sys.stderr)
         return 2
-    files = list(dict.fromkeys(args.html))
+    files = list(dict.fromkeys(args.files))
     total_errors = total_warnings = 0
     for path in files:
         errs, warns = check_file(path, theme)

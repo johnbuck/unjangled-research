@@ -71,7 +71,9 @@ python scripts/check_theme.py [html_path] [--theme <name|path>]
 
 Run on every rendered HTML report, after `render_report.py` and only after
 the readability gate passes. Default theme: `neutral`; pass `--theme` to
-match a non-default render.
+match a non-default render. The gate also accepts `.pptx` packages: forbidden
+colors, off-theme fonts, empty slides, and external relationships other than
+hyperlinks are ERRORs; off-palette colors WARN — same exit rules as HTML.
 
 **ERROR — delivery blocker (exit 1 on any ERROR):**
 - A color in the theme's `qa.forbidden_colors`

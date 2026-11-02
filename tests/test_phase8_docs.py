@@ -1,8 +1,9 @@
-"""Phase 8 docs wiring (story 2.3 + story 3.2): SKILL.md and reference/*.md
-carry no mention of the retired upstream HTML template (named below only as a
-concatenation so the repo-wide grep stays clean); SKILL.md lists
-render_report.py, render_deck.py, and check_theme.py; every scripts/*.py
-path named in SKILL.md, the reference docs, and README.md exists on disk."""
+"""Phase 8 docs wiring (story 2.3 + story 3.2 + story 4.5): SKILL.md and
+reference/*.md carry no mention of the retired upstream HTML template (named
+below only as a concatenation so the repo-wide grep stays clean); SKILL.md
+lists render_report.py, render_deck.py, render_pptx.py, and check_theme.py,
+and still names the PDF output; every scripts/*.py path named in SKILL.md,
+the reference docs, and README.md exists on disk."""
 import os
 import re
 
@@ -37,7 +38,13 @@ def test_skill_lists_phase8_scripts():
     s = read(SKILL)
     assert "render_report.py" in s
     assert "render_deck.py" in s
+    assert "render_pptx.py" in s
     assert "check_theme.py" in s
+
+
+def test_skill_still_offers_pdf_output():
+    s = read(SKILL)
+    assert "PDF (professional print, auto-opened)" in s
 
 
 def test_script_paths_exist():
@@ -45,3 +52,11 @@ def test_script_paths_exist():
         text = read(doc)
         for name in set(re.findall(r"scripts/([A-Za-z0-9_]+\.py)", text)):
             assert os.path.isfile(os.path.join(SCRIPTS, name)), (doc, name)
+
+
+if __name__ == "__main__":
+    test_no_retired_template_mentions()
+    test_skill_lists_phase8_scripts()
+    test_skill_still_offers_pdf_output()
+    test_script_paths_exist()
+    print("all 4 phase8-docs tests ran and passed")

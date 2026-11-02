@@ -74,9 +74,10 @@ Mode Selection
 - `scripts/md_to_html.py` — markdown converter used internally by the render model; not a delivery step
 - `python scripts/render_report.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [report.html]` — themed renderer; builds the render model in-process and writes a self-contained HTML report (`--theme <name|path>` overrides the default `neutral` theme)
 - `python scripts/render_deck.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [deck.html]` — optional themed slide deck from the same inputs as the report (`--theme <name|path>` as above); offer it when the user asks for slides, a presentation, or a deck — otherwise deliver the report alone
-- `python scripts/check_theme.py [report.html] [--theme <name|path>]` — theme QA gate on the rendered HTML; 0 errors required before delivery (exit 1 on any ERROR)
+- `python scripts/render_pptx.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [deck.pptx]` — optional themed editable PowerPoint deck from the same inputs as the report (`--theme <name|path>` as above); offer it when the user asks for PowerPoint, `.pptx`, or editable slides — it is an additional output, in addition to the HTML report, never instead of it
+- `python scripts/check_theme.py [report.html] [--theme <name|path>]` — theme QA gate on the rendered HTML and on `.pptx` decks; 0 errors required before delivery (exit 1 on any ERROR)
 
-**Phase 8 order (explicit):** `validate_report.py` → `readability_check.py` → `render_report.py` → `check_theme.py` — render only after the first two pass, deliver only at 0 QA errors. When the agent also produces the optional deck: `render_deck.py` → `check_theme.py` on the deck, after the report passes its gate. Full loop with the citation verifiers: [quality-gates.md](./reference/quality-gates.md).
+**Phase 8 order (explicit):** `validate_report.py` → `readability_check.py` → `render_report.py` → `check_theme.py` — render only after the first two pass, deliver only at 0 QA errors. When the agent also produces the optional deck: `render_deck.py` → `check_theme.py` on the deck, after the report passes its gate; and when the user also wants the editable PowerPoint file: `render_pptx.py` → `check_theme.py` on the `.pptx`, likewise after the report passes. Full loop with the citation verifiers: [quality-gates.md](./reference/quality-gates.md).
 
 ---
 
@@ -105,6 +106,7 @@ Every comprehensive run answers at planning: "which facets of this topic are act
 - `projects.jsonl` — discovery runs only: one row per candidate per `schemas/discovery_project.schema.json` (name, registry, tier, metrics with asOf dates); the report's comparison matrix renders FROM this file — never the reverse
 - HTML report (themed, self-contained)
 - Slide deck (optional, themed, self-contained — when the user asked for one)
+- PowerPoint deck (optional, editable .pptx, themed)
 - PDF (professional print, auto-opened)
 
 **Quality standards:**

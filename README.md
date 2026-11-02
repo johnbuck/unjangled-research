@@ -37,6 +37,9 @@ changed.
   gates the output — 0 errors required before delivery.
 - **Optional slide deck.** `scripts/render_deck.py` renders the same finished
   report as a self-contained themed deck, gated by the same theme QA.
+- **Optional PowerPoint deck.** `scripts/render_pptx.py` renders the same
+  finished report as a native, editable themed `.pptx` (standard library
+  only, nothing to install), gated by the same theme QA.
 - **Contested topics.** `references/contested-topics.md` requires every facet
   of a contested question to be listed and steelmanned, and a verdict only when
   the user asks for one. `validate_report.py --manifest` enforces facet

@@ -95,6 +95,43 @@ and re-render — never by editing the generated HTML.
 
 ---
 
+## Optional: PowerPoint
+
+When the user asks for PowerPoint, a `.pptx`, or editable slides, the agent
+also renders a native PowerPoint deck from the same inputs as the report —
+an additional output next to the HTML report, never instead of it. Render it
+after the report has passed Steps 1-3 (and after the optional HTML deck):
+
+```bash
+python3 scripts/render_pptx.py --report [report.md] --manifest [run_dir]/run_manifest.json --format [format] --out [deck.pptx]
+```
+
+`--report`, `--manifest`, `--format`, and `--theme <name|path>` behave exactly
+as in Step 2; the render model is built in-process, so no separate model step
+is needed.
+
+Gate the `.pptx` the same way:
+
+```bash
+python3 scripts/check_theme.py [deck.pptx] [--theme <name|path>]
+```
+
+`check_theme.py` must report 0 errors on the `.pptx` too before it is
+delivered. It inspects the package's slides, masters, layouts, theme parts,
+and relationships: forbidden colors, off-theme fonts, empty slides, and any
+external relationship other than a hyperlink are ERRORs; off-palette colors
+WARN. Fix problems in the report or the theme and re-render — never by
+patching the generated file.
+
+The file is fully editable: every visible word sits in native text boxes and
+shapes (`<a:t>` runs), so it opens and edits in PowerPoint, Keynote, Google
+Slides, or LibreOffice. Fonts are referenced by name only (the theme's
+family — Lato if the viewer has it installed, otherwise the viewer's default
+sans); nothing is embedded and nothing needs to be installed. Each slide
+carries its speaker notes on its notes page.
+
+---
+
 ## Adding a theme
 
 Copy `themes/neutral/` to `themes/<name>/` and edit `theme.json`. The
