@@ -4,6 +4,7 @@ sections, and a contested manifest yields facets with two sides each."""
 import json
 import os
 import re
+import string
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -13,6 +14,8 @@ from build_render_model import (  # noqa: E402
     CONNECTOR_WORDS,
     _stat_label,
     build_model,
+    sentences,
+    strip_md,
 )
 
 FORMATS_DIR = os.path.join(HERE, "fixtures", "formats")
@@ -175,6 +178,100 @@ def test_stat_label_handles_quote_opened_before_value():
     assert "support" in words or "contributions" in words, label
 
 
+def _edge_word(word):
+    return word.strip(string.punctuation).lower()
+
+
+def _normalize_sentence(sent):
+    text = re.sub(r"\s*\[E:[^\]]*\]", "", strip_md(sent))
+    return re.sub(r"\s*\[\d+\]", "", text)
+
+
+def test_stat_captions_are_contiguous_source_phrases():
+    """Every caption is one contiguous 3-8-word run of its source
+    sentence (markdown and citation markers removed) — never words
+    joined across the removed value — and never opens or closes on a
+    connector."""
+    for path, fmt in CASES:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        model = build(path)
+        for stat in model["key_stats"]:
+            caption = re.sub(r"\s+", " ", stat["label"]).strip()
+            words = caption.split()
+            assert 3 <= len(words) <= 8, (path, stat, caption)
+            assert _edge_word(words[0]) not in CONNECTOR_WORDS, (path, stat, caption)
+            assert _edge_word(words[-1]) not in CONNECTOR_WORDS, (path, stat, caption)
+            assert stat["value"] not in caption, (path, stat, caption)
+            sources = []
+            for line in lines:
+                s = re.sub(r"^\s*[-*]\s+", "", line.strip())
+                for sent in sentences(s):
+                    norm = re.sub(r"\s+", " ", _normalize_sentence(sent))
+                    if stat["value"] in norm:
+                        sources.append(norm)
+            assert sources, (path, stat, caption)
+            assert any(caption in norm for norm in sources), \
+                (path, stat, caption, sources)
+
+
+def test_stat_label_not_spliced_across_value():
+    """A value in the middle of its clause must not yield a caption
+    spliced from the words on either side of it: the screen-time shape
+    ('Among free of baseline symptoms') and the discovery shape
+    ('GitHub mirror carries and a release')."""
+    screen_time = (
+        "Among 2,587 tenth-graders free of baseline symptoms, each "
+        "additional high-frequency digital media activity raised the "
+        "odds of later ADHD symptoms, OR 1.11, or 1.10 after covariate "
+        "adjustment [5]."
+    )
+    label = _stat_label(screen_time, "2,587 tenth-graders")
+    assert label == "tenth-graders free of baseline symptoms", label
+
+    discovery = "The GitHub mirror carries 9,200 stars and a release this month [2]."
+    label = _stat_label(discovery, "9,200 stars")
+    assert label is None, label
+
+
+def test_stat_label_strips_edge_punctuation_and_parenthetical():
+    """The a2a shape: the span beside the value opens on a parenthetical
+    fragment followed by a comma. The fragment and the dangling comma are
+    stripped at the edge, the stopword trim and the 3-8-word rule are
+    re-applied, and what survives must not start or end on punctuation,
+    a bracket fragment, or a connector."""
+    sent = (
+        'Google\'s launch post announced "a new, open protocol called '
+        'Agent2Agent (A2A), with support and contributions from more than '
+        '50 technology partners" in April 2025'
+    )
+    label = _stat_label(sent, "50 technology partners")
+    assert label == "support and contributions", label
+    words = label.split()
+    assert label[0] not in "([,;:.!?\"'", label
+    assert label[-1] not in "([,;:.!?\"'", label
+    assert _edge_word(words[0]) not in CONNECTOR_WORDS, label
+    assert _edge_word(words[-1]) not in CONNECTOR_WORDS, label
+
+
+def test_stat_dropped_when_no_clean_caption():
+    """A sentence with no contiguous 3-8-word span beside the value
+    yields no caption, and the stat is left out of the model rather
+    than shown with a fragment."""
+    sent = ("The largest meta-analysis, in JAMA Psychiatry in 2022, "
+            "pooled 87 studies and 159,425 children [14].")
+    assert _stat_label(sent, "87 studies") is None
+    report = (
+        "# Title\n\n"
+        "## Summary\n\n" + sent + "\n\n"
+        "## Key Findings\n\nSomething qualitative happened.\n\n"
+        "## Bibliography\n\n[1] A (2024). Some publisher. J.\n"
+    )
+    model = build_model(report)
+    values = [s["value"] for s in model["key_stats"]]
+    assert "87 studies" not in values, values
+
+
 def test_key_stats_skip_methodology_and_criteria():
     for path in (os.path.join(HERE, "fixtures", "valid_report.md"),
                  os.path.join(FORMATS_DIR, "discovery_catalog.md")):
@@ -290,6 +387,10 @@ if __name__ == "__main__":
     test_each_model_passes_schema()
     test_key_stats_verbatim_and_bounded()
     test_stat_label_handles_quote_opened_before_value()
+    test_stat_captions_are_contiguous_source_phrases()
+    test_stat_label_not_spliced_across_value()
+    test_stat_label_strips_edge_punctuation_and_parenthetical()
+    test_stat_dropped_when_no_clean_caption()
     test_key_stats_skip_methodology_and_criteria()
     test_bibliography_excluded_from_sections()
     test_findings_extracted()
@@ -297,4 +398,4 @@ if __name__ == "__main__":
     test_facet_matching_survives_heading_rewording()
     test_facet_positional_fallback_when_counts_agree()
     test_sections_html_converted()
-    print("all 13 render-model tests ran and passed")
+    print("all 17 render-model tests ran and passed")

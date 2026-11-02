@@ -330,51 +330,196 @@ def _first_stat(sent):
     return min(candidates, key=lambda m: m.start()).group(0).strip()
 
 
-CLAUSE_SPLIT_RE = re.compile(r"[;:]|(?<!\d)[—–](?!\d)|(?<!\d),(?!\d)")
+# Words a caption never starts or ends on: prepositions, conjunctions,
+# articles, pronouns, copulas, and quantity modifiers.
 CONNECTOR_WORDS = {
-    "a", "an", "and", "or", "the", "of", "to", "with", "called", "than",
-    "from", "more", "in", "for", "by", "at", "on", "as", "this", "that",
-    "which", "including", "is", "are", "was", "were", "its", "their",
+    "a", "an", "the", "and", "or", "but", "nor", "yet", "so", "of", "to",
+    "with", "from", "in", "for", "by", "at", "on", "as", "than", "versus",
+    "vs", "v", "into", "onto", "upon", "about", "over", "under",
+    "between", "among", "across", "through", "during", "within",
+    "without", "per", "via", "including", "called", "is", "are", "was",
+    "were", "be", "been", "being", "am", "has", "have", "had", "do",
+    "does", "did", "will", "would", "can", "could", "should", "may",
+    "might", "must", "its", "their", "his", "her", "our", "your", "my",
+    "this", "that", "these", "those", "which", "who", "whom", "whose",
+    "what", "it", "they", "he", "she", "we", "you", "i", "more", "most",
+    "less", "least", "fewer", "some", "such", "both", "either",
+    "neither", "each", "all", "any", "no", "not", "if", "then",
+    "because", "since", "although", "though", "however", "thus",
+    "therefore", "when", "while", "where", "after", "before",
 }
+# Linking verbs a caption also never starts or ends on: "A third cohort
+# tracked 1,323 ..." must not caption as "third cohort tracked".
+VERB_EDGE_WORDS = {
+    "tracked", "pooled", "carries", "carried", "clears", "totaled",
+    "totalled", "totaling", "totalling", "reached", "found", "showed",
+    "reported", "explained", "ran", "analyzed", "analysed", "surveyed",
+    "enrolled", "examined", "included", "spanning", "covering",
+    "comprising", "averaging", "involving", "affecting", "tracking",
+    "rose", "fell", "increased", "decreased", "dropped", "climbed",
+}
+# Value units that measure rather than count: the counted noun is not in
+# the value, so the caption prefers the words before the value.
+MEASURE_UNITS = {
+    "percent", "percentage", "times", "thousand", "million", "billion",
+    "trillion",
+}
+CAPTION_MIN_WORDS = 3
+CAPTION_MAX_WORDS = 8
+_EDGE_STOP_SET = CONNECTOR_WORDS | VERB_EDGE_WORDS
+_EDGE_STRIP_RE = re.compile(r"[,;:.!?…—–\"']")
+_CLAUSE_CLOSE_RE = re.compile(r"[,;:.!?…—–]$")
+_COORD_CONJ = ("and", "but", "nor")
 
 
-def _strip_unbalanced(s):
-    if s.count('"') % 2 == 1:
-        s = s.replace('"', "")
-    if s.count("(") != s.count(")"):
-        s = s.replace("(", "").replace(")", "")
-    if s.count("[") != s.count("]"):
-        s = s.replace("[", "").replace("]", "")
-    return s
+def _edge_word(tok):
+    return _EDGE_STRIP_RE.sub("", tok).lower()
 
 
-def _polish_label(s):
-    s = _strip_unbalanced(re.sub(r"\s+", " ", s)).strip(" ,;:.–—-\"'")
-    words = s.split()[:8]
-    while words and words[-1].lower() in CONNECTOR_WORDS:
-        words.pop()
-    while words and words[0].lower() in CONNECTOR_WORDS:
-        words.pop(0)
-    return words
+def _has_alnum(tok):
+    return any(ch.isalnum() for ch in tok)
+
+
+def _numish(tok):
+    """A token that IS a number ("81,234", "2022,", "$4") rather than an
+    identifier that merely contains one ("A2A", "Agent2Agent")."""
+    return bool(re.match(r"^[$€£¥]?\d", tok))
+
+
+def _balanced(s):
+    return (s.count('"') % 2 == 0 and s.count("(") == s.count(")")
+            and s.count("[") == s.count("]"))
+
+
+def _clean_sentence(sent):
+    text = re.sub(r"\s*\[E:[^\]]*\]", "", strip_md(sent))
+    return re.sub(r"\s*\[\d+\]", "", text).strip()
+
+
+def _after_span(words, cap):
+    """Contiguous words after the value: stops before a stand-alone
+    punctuation token, a digit-bearing token (another value), or a
+    coordinating conjunction, and after a token that closes a clause."""
+    span = []
+    for tok in words:
+        if not _has_alnum(tok) or _numish(tok):
+            break
+        if _edge_word(tok) in _COORD_CONJ:
+            break
+        span.append(tok)
+        if _CLAUSE_CLOSE_RE.search(tok) or len(span) >= cap:
+            break
+    return span
+
+
+def _before_span(words, cap):
+    """Contiguous words before the value, walking right to left: stops
+    before a stand-alone punctuation token or a digit-bearing token.
+    Clause punctuation may be crossed — the subject of the number often
+    sits in the clause before it ("Joplin leads on every signal:
+    48,000 stars")."""
+    span = []
+    for tok in reversed(words):
+        if not _has_alnum(tok) or _numish(tok):
+            break
+        span.append(tok)
+        if len(span) >= cap:
+            break
+    span.reverse()
+    return span
+
+
+def _edge_junk(tok):
+    """Punctuation alone, a bracketed/parenthetical fragment, or a
+    dangling close bracket: never fit at a caption edge."""
+    if not _has_alnum(tok):
+        return True
+    if tok[0] in "([":
+        return True
+    return tok[-1] in ")]"
+
+
+def _trim_edges(span):
+    span = list(span)
+    while True:
+        changed = False
+        while span and _edge_word(span[-1]) in _EDGE_STOP_SET:
+            span.pop()
+            changed = True
+        while span and _edge_word(span[0]) in _EDGE_STOP_SET:
+            span.pop(0)
+            changed = True
+        while span and _edge_junk(span[-1]):
+            span.pop()
+            changed = True
+        while span and _edge_junk(span[0]):
+            span.pop(0)
+            changed = True
+        if not changed:
+            break
+    # "<subject> <linking verb> <rest>" is a clause, not a caption: drop
+    # the subject-verb head ("children reported odds" -> "odds").
+    if len(span) >= 2 and _edge_word(span[1]) in VERB_EDGE_WORDS:
+        span = span[2:]
+        while span and _edge_word(span[0]) in _EDGE_STOP_SET:
+            span.pop(0)
+    return span
+
+
+def _unit_words(value):
+    """The value's count noun when it has one: "2,587 tenth-graders" ->
+    ["tenth-graders"]; measure words ("4.6 percent") count for nothing."""
+    toks = value.split()
+    i = 0
+    while i < len(toks) and _numish(toks[i]):
+        i += 1
+    unit = toks[i:]
+    if not unit or _edge_word(unit[0]) in MEASURE_UNITS:
+        return []
+    return unit
 
 
 def _stat_label(sent, value):
-    text = re.sub(r"\s*\[\d+\]", "", strip_md(sent))
-    clauses = [c.strip() for c in CLAUSE_SPLIT_RE.split(text) if c.strip()]
-    for i, clause in enumerate(clauses):
-        if value not in clause:
-            continue
-        remainder = clause.replace(value, " ", 1)
-        words = _polish_label(remainder)
-        if len(words) >= 3:
-            return " ".join(words)
-        if i > 0:
-            words = _polish_label(clauses[i - 1] + " " + remainder)
-        elif i + 1 < len(clauses):
-            words = _polish_label(remainder + " " + clauses[i + 1])
-        if len(words) >= 3:
-            return " ".join(words)
+    """A caption for a key stat: one contiguous run of 3-8 words from
+    the source sentence, never spliced across the value. Prefer the
+    words after the value — led by the value's own count noun when it
+    has one — else the words before it; a caption never starts or ends
+    on a connector or linking verb. When no run qualifies, return None:
+    the caller drops the stat rather than show a fragment."""
+    text = _clean_sentence(sent)
+    idx = text.find(value)
+    if idx < 0:
         return None
+    before = text[:idx].split()
+    after = text[idx + len(value):].split()
+    unit = _unit_words(value)
+    candidates = []
+    if unit:
+        window = _after_span(after, CAPTION_MAX_WORDS - len(unit))
+        if sum(1 for w in window if _has_alnum(w)) >= CAPTION_MIN_WORDS:
+            candidates.append(unit + window)
+        candidates.append(_after_span(after, CAPTION_MAX_WORDS))
+        candidates.append(_before_span(before, CAPTION_MAX_WORDS))
+    else:
+        candidates.append(_before_span(before, CAPTION_MAX_WORDS))
+        candidates.append(_after_span(after, CAPTION_MAX_WORDS))
+    for cand in candidates:
+        span = _trim_edges(cand)
+        if not CAPTION_MIN_WORDS <= len(span) <= CAPTION_MAX_WORDS:
+            continue
+        label = " ".join(span).strip(" \t,;:.!?…—–\"'")
+        words = label.split()
+        if not CAPTION_MIN_WORDS <= len(words) <= CAPTION_MAX_WORDS:
+            continue
+        if value in label or label not in text or not _balanced(label):
+            continue
+        if _edge_junk(words[0]) or _edge_junk(words[-1]):
+            continue
+        if _edge_word(words[0]) in _EDGE_STOP_SET:
+            continue
+        if _edge_word(words[-1]) in _EDGE_STOP_SET:
+            continue
+        return label
     return None
 
 
