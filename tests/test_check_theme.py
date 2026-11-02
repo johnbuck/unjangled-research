@@ -5,8 +5,8 @@ font family, and text inside the motif keep-out each exit 1 with the expected
 message; a plain <a href="https://..."> bibliography link and warn-only files
 (off-palette color, dark surface) exit 0.
 
-PowerPoint packages (built at runtime from pptx_lib under
-tests/fixtures/qa/pptx/): a clean deck and real render_pptx outputs for
+PowerPoint packages (built at runtime from pptx_lib in a system temp
+dir): a clean deck and real render_pptx outputs for
 every format fixture exit 0 under neutral and alt (an external hyperlink
 relationship included); decks with a forbidden theme color, an external
 image relationship, an off-theme typeface, an empty slide, a non-zip
@@ -24,7 +24,6 @@ ROOT = os.path.join(HERE, "..")
 SCRIPTS = os.path.join(ROOT, "scripts")
 CHECK = os.path.join(SCRIPTS, "check_theme.py")
 QA = os.path.join(HERE, "fixtures", "qa")
-QA_PPTX = os.path.join(QA, "pptx")
 ALT = os.path.join(HERE, "fixtures", "themes", "alt")
 FORBIDDEN_THEME = os.path.join(QA, "qa-forbidden")
 FORMATS_DIR = os.path.join(HERE, "fixtures", "formats")
@@ -127,8 +126,7 @@ def test_offpalette_and_dark_surface_warn_only():
 
 
 def pptx_workspace():
-    os.makedirs(QA_PPTX, exist_ok=True)
-    return tempfile.TemporaryDirectory(dir=QA_PPTX)
+    return tempfile.TemporaryDirectory(prefix="rf-qa-pptx-")
 
 
 def build_clean_deck(theme, path, extra_run=None):

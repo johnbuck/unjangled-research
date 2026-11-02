@@ -93,7 +93,7 @@ def test_malformed_theme_names_bad_key():
     for key_path, break_it in breakages:
         with tempfile.TemporaryDirectory() as d:
             for fn in os.listdir(ALT):
-                shutil.copy(os.path.join(ALT, fn), d)
+                shutil.copyfile(os.path.join(ALT, fn), os.path.join(d, fn))
             path = os.path.join(d, "theme.json")
             with open(path, encoding="utf-8") as f:
                 t = json.load(f)
