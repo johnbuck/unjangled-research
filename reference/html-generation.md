@@ -72,7 +72,14 @@ Open the HTML for the user when the environment allows it (for example
 
 When the user asks for slides, a presentation, or a deck, the agent renders
 one from the same inputs as the report (otherwise the report alone is
-delivered). Render it after the report has passed Steps 1-3:
+delivered). Render it after the report has passed Steps 1-3. This works from
+a finished report of an earlier run too: pass its markdown via `--report`
+(and that run's manifest via `--manifest` if available) with no new research.
+
+For any other deck request — composing one from notes or an outline, editing
+an exported plan, or choosing layouts — the authoring guide is
+[slide-decks.md](./slide-decks.md); the command below is path A/B of that
+guide, rendered straight from the report.
 
 ```bash
 python3 scripts/render_deck.py --report [report.md] --manifest [run_dir]/run_manifest.json --format [format] --out [deck.html]
@@ -100,7 +107,12 @@ and re-render — never by editing the generated HTML.
 When the user asks for PowerPoint, a `.pptx`, or editable slides, the agent
 also renders a native PowerPoint deck from the same inputs as the report —
 an additional output next to the HTML report, never instead of it. Render it
-after the report has passed Steps 1-3 (and after the optional HTML deck):
+after the report has passed Steps 1-3 (and after the optional HTML deck).
+As with the HTML deck, a finished report of an earlier run works too: pass
+its markdown via `--report` (and that run's manifest via `--manifest` if
+available) with no new research. Authoring or editing the deck itself —
+including rendering from a slide list with `--slides [deck.json]` — is
+covered in [slide-decks.md](./slide-decks.md):
 
 ```bash
 python3 scripts/render_pptx.py --report [report.md] --manifest [run_dir]/run_manifest.json --format [format] --out [deck.pptx]

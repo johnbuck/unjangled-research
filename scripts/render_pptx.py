@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 PowerPoint renderer (E4-R3): turns a render model (build_render_model.py
-JSON) into a native, editable .pptx through pptx_lib.
+JSON) into a native, editable .pptx through pptx_lib — and, per E5-R3,
+any authored slide list (schemas/deck_spec.schema.json) as well.
 
 The content plan comes from slide_plan.plan_slides (E4-R1); this module
 lays each planned spec out on pptx_lib's 1280x720 pixel grid, mirroring
@@ -21,6 +22,22 @@ the HTML deck's layout (render_deck.py + deck.css/research.css):
     facet     — facet title plus one tinted panel per side (2-4 columns)
     sources   — numbered entries, hyperlinked titles, "+N more" note
 
+Slide-list decks (E5-R1, deck_spec.py) render through the same shared
+builders for the five layouts the research plan emits, plus one builder
+per authored layout, each mirroring its HTML rules (render_deck.py +
+deck.css/research.css/deck_layouts.css):
+
+    section   — divider: large section name, sub line, accent bar
+    agenda    — numbered rows (01..N) between hairline rules
+    two_column — two titled panels, the right one tinted
+    three_values — three numbered columns over hairline rules, note
+    compare   — two cards (problem vs. solution) with x/check rows,
+                kicker lines, and an arrow between them
+    bars      — ranked horizontal bars as rectangles scaled to the max
+                value (label above, display value right), note
+    quote     — large quotation with attribution
+    closing   — headline plus numbered next steps
+
 Every non-cover slide carries the theme's footer label (footer.label
 formatted with the deck title and the slide's section) at bottom-left, a
 slide number at bottom-right, and a thin rule above the footer. Speaker
@@ -31,6 +48,7 @@ slide_plan at 1280x720.
     python3 render_pptx.py --model render_model.json [--theme neutral] --out deck.pptx
     python3 render_pptx.py --report report.md [--manifest run_manifest.json] \
         [--format comprehensive-report] [--theme neutral] --out deck.pptx
+    python3 render_pptx.py --slides deck.json [--theme neutral] --out deck.pptx
 """
 import argparse
 import json
@@ -39,9 +57,10 @@ import sys
 from pathlib import Path
 
 from build_render_model import build_model
+from deck_spec import DeckError, load_deck, validate_deck
 from motif import motif
 from pptx_lib import Presentation, logo_payload
-from slide_plan import FORMAT_DISPLAY, plan_slides
+from slide_plan import FORMAT_DISPLAY, plan_slides, stat_parts
 from theme import footer_label, load_theme, motif_settings
 
 # 1280x720-grid layout, in deck CSS units (cqw = 1% of 1280 = 12.8px):
@@ -326,6 +345,463 @@ def render_pptx(model, out_path, theme="neutral"):
     return str(out)
 
 
+# ---------- slide-list decks (E5-R3) ----------
+# Grid numbers mirror the HTML rules in deck.css, research.css, and
+# deck_layouts.css (1cqw = 12.8px; sizes scaled like the research slides).
+AGENDA_TOP, AGENDA_BOTTOM = 210, 648      # agenda rows region
+PANEL_TOP, PANEL_BOTTOM = 206, 650        # two-column panels
+COMPARE_TOP, COMPARE_BOTTOM = 200, 650    # compare cards
+COMPARE_GAP, COMPARE_ARROW_W = 33, 56     # 2.6cqw gap, 4.4cqw arrow circle
+BARS_TOP, BARS_BOTTOM = 206, 630          # bars region (note rides with it)
+
+
+def _section_of(slide, deck, layout):
+    return (slide.get("section") or deck.get("footer_section")
+            or layout.replace("_", " ").title())
+
+
+def _spec_of(slide, deck, n):
+    """The shared spec shape (eyebrow/title/section/number/notes) the
+    research builders and the footer read; statement overrides title."""
+    section = _section_of(slide, deck, slide["layout"])
+    return {"eyebrow": slide.get("eyebrow") or section, "title": slide.get("title") or "",
+            "section": section, "number": n, "notes": slide.get("notes") or ""}
+
+
+def _eyebrow_head(slide, eyebrow):
+    """Header carrying only the eyebrow (statement-style), mirroring
+    render_deck's _eyebrow_head."""
+    slide.text_box(MARGIN_X, BODY_TOP, CONTENT_W, 22,
+                   [{"text": (eyebrow or "").upper(), "size": 10,
+                     "bold": True, "color": "accent"}],
+                   name="Eyebrow")
+
+
+def _est_lines(text, width_px, size_px, bold=False):
+    """Estimated wrapped-line count for plain text at a deck-px size in a
+    box of width_px (HTML text cannot be measured here; ~0.5em per glyph
+    is conservative for the themes' sans faces)."""
+    if not text:
+        return 0
+    per_char = size_px * (0.54 if bold else 0.5)
+    return max(1, -(-len(text) * per_char // width_px))
+
+
+def _deck_cover_slide(pres, slide, deck, deck_title, theme, n):
+    sub = slide["subtitle"] if slide.get("subtitle") is not None \
+        else (deck.get("subtitle") or "")
+    date = slide["date"] if slide.get("date") is not None \
+        else (deck.get("date") or "")
+    spec = {"eyebrow": slide.get("eyebrow") or deck.get("eyebrow") or "",
+            "title": slide["title"], "subtitle": sub, "date": date,
+            "notes": slide.get("notes") or ""}
+    _cover_slide(pres, spec, deck_title, theme)
+
+
+def _deck_statement_slide(pres, slide, deck, deck_title, theme, n):
+    spec = _spec_of(slide, deck, n)
+    spec["title"] = slide["headline"]
+    spec["stats"] = [{"value": s["value"], "label": s["label"], "ref": s.get("ref"),
+                      "parts": list(stat_parts(s["value"]))}
+                     for s in slide.get("stats") or []]
+    _statement_slide(pres, spec, deck_title, theme)
+
+
+def _deck_bullets_slide(pres, slide, deck, deck_title, theme, n):
+    spec = _spec_of(slide, deck, n)
+    if slide.get("bullets"):
+        spec["bullets"] = slide["bullets"]
+        _bulleted_slide(pres, spec, deck_title, theme)
+        return
+    slide_obj = _new_slide(pres, spec)
+    _header(slide_obj, spec)
+    refs = slide.get("refs") or []
+    if refs:
+        slide_obj.text_box(MARGIN_X, 300, CONTENT_W, 60,
+                           [{"text": "Evidence: " + " ".join(f"[{r}]" for r in refs),
+                             "size": 9.5, "color": "muted"}],
+                           name="Evidence")
+    else:
+        slide_obj.text_box(MARGIN_X, 300, CONTENT_W, 60,
+                           [{"text": "Detailed in the full report.", "size": 12,
+                             "color": "muted"}],
+                           name="Fallback note")
+    _footer(slide_obj, spec, deck_title, theme)
+
+
+def _deck_facet_slide(pres, slide, deck, deck_title, theme, n):
+    spec = _spec_of(slide, deck, n)
+    spec["sides"] = slide.get("sides") or []
+    spec["bullets"] = slide.get("bullets") or []
+    _facet_slide(pres, spec, deck_title, theme)
+
+
+def _deck_sources_slide(pres, slide, deck, deck_title, theme, n):
+    spec = _spec_of(slide, deck, n)
+    spec["sources"] = slide["sources"]
+    spec["more_sources"] = slide.get("more_sources") or 0
+    _sources_slide(pres, spec, deck_title, theme)
+
+
+def _section_pptx_slide(pres, slide, deck, deck_title, theme, n):
+    """Section divider: eyebrow, centered large title + sub, accent bar
+    directly below them, all one centered group (mirrors .layout-divider /
+    .divider-title / .kbar)."""
+    spec = _spec_of(slide, deck, n)
+    slide_obj = _new_slide(pres, spec)
+    _eyebrow_head(slide_obj, spec["eyebrow"])
+    paras = [{"text": slide["title"], "size": 34, "bold": True, "color": "ink",
+              "line_spacing": 1.08}]
+    if slide.get("sub"):
+        paras.append({"text": slide["sub"], "size": 12.5, "color": "body",
+                      "line_spacing": 1.4, "space_before": 16})
+    slide_obj.text_box(MARGIN_X, 120, 640, 440, paras,
+                       anchor="ctr", autofit=True, name="Divider title")
+    est = (_est_lines(slide["title"], 640, 34, bold=True) * 34 * 1.08
+           + (_est_lines(slide["sub"], 640, 12.5) * (16 + 12.5 * 1.4)
+              if slide.get("sub") else 0))
+    bar_y = min(120 + 440 / 2 + est / 2 + 12, 600)
+    slide_obj.rect(MARGIN_X, bar_y, 44, 4, fill="secondary", radius=2, name="Divider bar")
+    _footer(slide_obj, spec, deck_title, theme)
+
+
+def _agenda_pptx_slide(pres, slide, deck, deck_title, theme, n):
+    """Numbered agenda rows between hairline rules (mirrors .agenda-list;
+    the last row's number and title are muted)."""
+    spec = _spec_of(slide, deck, n)
+    slide_obj = _new_slide(pres, spec)
+    _header(slide_obj, spec)
+    items = slide["items"]
+    count = len(items)
+    row_h = (AGENDA_BOTTOM - AGENDA_TOP) / count
+    for j in range(count + 1):
+        y = AGENDA_TOP + j * row_h
+        slide_obj.line(MARGIN_X, y, SLIDE_W - MARGIN_X, y,
+                       color="line", width_pt=1.0, name=f"Agenda rule {j + 1}")
+    for j, item in enumerate(items):
+        y, last = AGENDA_TOP + j * row_h, j == count - 1
+        slide_obj.text_box(MARGIN_X, y, 96, row_h,
+                           [{"text": f"{j + 1:02d}", "size": 24,
+                             "color": "muted" if last else "accent"}],
+                           anchor="ctr", name=f"Agenda number {j + 1}")
+        slide_obj.text_box(MARGIN_X + 110, y, 272, row_h,
+                           [{"text": item["title"], "size": 18, "bold": True,
+                             "color": "muted" if last else "ink", "line_spacing": 1.15}],
+                           anchor="ctr", autofit=True, name=f"Agenda item {j + 1}")
+        if item.get("desc"):
+            slide_obj.text_box(MARGIN_X + 400, y, CONTENT_W - 400, row_h,
+                               [{"text": item["desc"], "size": 12.5, "color": "body",
+                                 "line_spacing": 1.3}],
+                               anchor="ctr", autofit=True, name=f"Agenda desc {j + 1}")
+    _footer(slide_obj, spec, deck_title, theme)
+
+
+def _two_column_pptx_slide(pres, slide, deck, deck_title, theme, n):
+    """Two titled panels side by side at content height, centered in the
+    body region as one row (the HTML grid row is as tall as the taller
+    panel), the right one tinted (mirrors .two-col-panels / .col-panel)."""
+    spec = _spec_of(slide, deck, n)
+    slide_obj = _new_slide(pres, spec)
+    _header(slide_obj, spec)
+    gap = 33                     # 2.6cqw panel gap
+    panel_w = (CONTENT_W - gap) / 2
+
+    def content_h(panel):
+        w = panel_w - 56
+        if panel.get("body") is not None:
+            return _est_lines(panel["body"], w, 11.5) * 11.5 * 1.5
+        return sum(_est_lines(b["text"], w, 11) * 11 * 1.35 + 8
+                   for b in panel.get("bullets") or [])
+
+    ests = [26 + _est_lines(slide[k]["title"], panel_w - 56, 16, bold=True)
+            * 16 * 1.25 + 14 + content_h(slide[k]) + 26
+            for k in ("left", "right")]
+    region_h = PANEL_BOTTOM - PANEL_TOP
+    panel_h = min(max(max(ests), 120), region_h)
+    y = PANEL_TOP + (region_h - panel_h) / 2
+    for j, key in enumerate(("left", "right")):
+        panel = slide[key]
+        x = MARGIN_X + j * (panel_w + gap)
+        if key == "right":
+            slide_obj.rect(x, y, panel_w, panel_h, fill="accent_tint1",
+                           radius=18, name="Column panel right")
+        else:
+            slide_obj.rect(x, y, panel_w, panel_h, fill=None,
+                           line={"color": "line", "width_pt": 1.0},
+                           radius=18, name="Column panel left")
+        title_h = max(_est_lines(panel["title"], panel_w - 56, 16, bold=True)
+                      * 16 * 1.25, 22)
+        slide_obj.text_box(x + 28, y + 26, panel_w - 56, title_h,
+                           [{"text": panel["title"], "size": 16, "bold": True,
+                             "color": "ink", "line_spacing": 1.25}],
+                           autofit=True, name=f"Column title {j + 1}")
+        body_top = y + 26 + title_h + 14
+        body_h = max(y + panel_h - 26 - body_top, 20)
+        if panel.get("body") is not None:
+            slide_obj.text_box(x + 28, body_top, panel_w - 56, body_h,
+                               [{"text": panel["body"], "size": 11.5, "color": "body",
+                                 "line_spacing": 1.5}],
+                               autofit=True, name=f"Column body {j + 1}")
+        else:
+            paras = [{"text": b["text"], "size": 11, "color": "body",
+                      "bullet": {"color": "secondary", "indent_px": 18},
+                      "line_spacing": 1.35, "space_after": 8}
+                     for b in panel.get("bullets") or []]
+            slide_obj.text_box(x + 28, body_top, panel_w - 56, body_h,
+                               paras, autofit=True, name=f"Column bullets {j + 1}")
+    _footer(slide_obj, spec, deck_title, theme)
+
+
+def _three_values_pptx_slide(pres, slide, deck, deck_title, theme, n):
+    """Three numbered columns over hairline rules plus note (mirrors
+    .value-grid / .value-line / .value-num)."""
+    spec = _spec_of(slide, deck, n)
+    slide_obj = _new_slide(pres, spec)
+    _header(slide_obj, spec)
+    gap = 51                     # 4cqw column gap
+    col_w = (CONTENT_W - 2 * gap) / 3
+    for j, value in enumerate(slide["values"]):
+        x = MARGIN_X + j * (col_w + gap)
+        slide_obj.line(x, 214, x + col_w, 214, color="line", width_pt=2.0,
+                       name=f"Value rule {j + 1}")
+        slide_obj.text_box(x, 226, col_w, 70,
+                           [{"text": f"{j + 1:02d}", "size": 40, "color": "accent"}],
+                           name=f"Value number {j + 1}")
+        slide_obj.text_box(x, 302, col_w, 44,
+                           [{"text": value["title"], "size": 15, "bold": True,
+                             "color": "ink", "line_spacing": 1.2}],
+                           autofit=True, name=f"Value title {j + 1}")
+        slide_obj.text_box(x, 350, col_w, 240,
+                           [{"text": value["body"], "size": 11.5, "color": "body",
+                             "line_spacing": 1.5}],
+                           autofit=True, name=f"Value body {j + 1}")
+    if slide.get("note"):
+        grid_bottom = 350 + max(_est_lines(v["body"], col_w, 11.5)
+                                for v in slide["values"]) * 11.5 * 1.5
+        note_y = min(grid_bottom + 14, 600)
+        slide_obj.text_box(MARGIN_X, note_y, CONTENT_W, 24,
+                           [{"text": slide["note"], "size": 9.5, "color": "muted"}],
+                           name="Values note")
+    _footer(slide_obj, spec, deck_title, theme)
+
+
+def _compare_pptx_slide(pres, slide, deck, deck_title, theme, n):
+    """Two cards (problem vs. solution) with marked rows and kickers, an
+    arrow circle between them (mirrors .compare-card / .marks /
+    .compare-arrow)."""
+    spec = _spec_of(slide, deck, n)
+    slide_obj = _new_slide(pres, spec)
+    _header(slide_obj, spec)
+    card_w = (CONTENT_W - COMPARE_ARROW_W - 2 * COMPARE_GAP) / 2
+    card_h = COMPARE_BOTTOM - COMPARE_TOP
+    default_tags = ("Option A", "Option B")
+    for j, (option, kind) in enumerate(zip(slide["options"], ("problem", "solution"))):
+        x = MARGIN_X + j * (card_w + COMPARE_GAP + COMPARE_ARROW_W + COMPARE_GAP)
+        if kind == "problem":
+            slide_obj.rect(x, COMPARE_TOP, card_w, card_h, fill=None,
+                           line={"color": "line", "width_pt": 1.0},
+                           radius=18, name=f"Compare card {j + 1}")
+        else:
+            slide_obj.rect(x, COMPARE_TOP, card_w, card_h, fill="accent_tint1",
+                           radius=18, name=f"Compare card {j + 1}")
+        tone = "muted" if kind == "problem" else "accent"
+        slide_obj.text_box(x + 38, COMPARE_TOP + 34, card_w - 76, 20,
+                           [{"text": (option.get("tag") or default_tags[j]).upper(),
+                             "size": 9, "bold": True, "color": tone}],
+                           name=f"Compare tag {j + 1}")
+        slide_obj.text_box(x + 38, COMPARE_TOP + 58, card_w - 76, 48,
+                           [{"text": option["name"], "size": 15, "bold": True,
+                             "color": "ink", "line_spacing": 1.25}],
+                           autofit=True, name=f"Compare name {j + 1}")
+        kicker_y = COMPARE_TOP + card_h - 38 - 44 if option.get("kicker") else None
+        rows_top = COMPARE_TOP + 118
+        rows_bottom = (kicker_y - 10) if kicker_y is not None else (COMPARE_BOTTOM - 38)
+        rows = option["rows"]
+        row_h = (rows_bottom - rows_top) / len(rows)
+        mark, mark_fill = (("\u00d7", "fill") if kind == "problem"
+                           else ("\u2713", "surface"))
+        for i, row in enumerate(rows):
+            y = rows_top + i * row_h
+            slide_obj.ellipse(x + 38, y + 2, 19, 19, fill=mark_fill,
+                              name=f"Compare mark {j + 1}.{i + 1}")
+            slide_obj.text_box(x + 38, y + 2, 19, 19,
+                               [{"text": mark, "size": 8, "bold": True,
+                                 "color": tone}],
+                               align="center",
+                               anchor="ctr", name=f"Compare mark glyph {j + 1}.{i + 1}")
+            slide_obj.text_box(x + 65, y, card_w - 103, row_h - 4,
+                               [{"text": row, "size": 11, "color": "body",
+                                 "line_spacing": 1.35}],
+                               autofit=True, name=f"Compare row {j + 1}.{i + 1}")
+        if kicker_y is not None:
+            slide_obj.text_box(x + 38, kicker_y, card_w - 76, 44,
+                               [{"text": option["kicker"], "size": 11, "bold": True,
+                                 "color": tone, "line_spacing": 1.3}],
+                               autofit=True, name=f"Compare kicker {j + 1}")
+    arrow_x = MARGIN_X + card_w + COMPARE_GAP
+    arrow_y = (COMPARE_TOP + COMPARE_BOTTOM) / 2 - COMPARE_ARROW_W / 2
+    slide_obj.ellipse(arrow_x, arrow_y, COMPARE_ARROW_W, COMPARE_ARROW_W,
+                      fill="secondary_tint2", name="Compare arrow")
+    slide_obj.text_box(arrow_x, arrow_y, COMPARE_ARROW_W, COMPARE_ARROW_W,
+                       [{"text": "\u2192", "size": 16, "bold": True,
+                         "color": "secondary_ink"}],
+                       align="center",
+                       anchor="ctr", name="Compare arrow glyph")
+    _footer(slide_obj, spec, deck_title, theme)
+
+
+def _bars_pptx_slide(pres, slide, deck, deck_title, theme, n):
+    """Ranked horizontal bars scaled to the max value: label above, thin
+    track, one fill rectangle per bar, display value right, note directly
+    below the last row; the whole block is one centered group and shrinks
+    uniformly when the schema-max bar count exceeds the region (mirrors
+    .barriers / .btrack / .bfill / .chart-note)."""
+    spec = _spec_of(slide, deck, n)
+    slide_obj = _new_slide(pres, spec)
+    _header(slide_obj, spec)
+    bars = slide["bars"]
+    note = slide.get("note") or ""
+    note_h = 5 + 18 if note else 0
+    label_h, track_h, inner_gap, group_gap = 20, 13, 6, 10
+    group_h = label_h + inner_gap + track_h
+    total = len(bars) * group_h + (len(bars) - 1) * group_gap
+    avail = BARS_BOTTOM - BARS_TOP - note_h
+    scale = min(1.0, avail / total) if total else 1.0
+    label_h, track_h = label_h * scale, track_h * scale
+    inner_gap, group_gap = inner_gap * scale, group_gap * scale
+    group_h = label_h + inner_gap + track_h
+    total = len(bars) * group_h + (len(bars) - 1) * group_gap
+    y = BARS_TOP + (BARS_BOTTOM - BARS_TOP - note_h - total) / 2
+    val_w = 56                   # 4.4cqw value column
+    track_w = CONTENT_W - val_w - 13
+    top_value = max((b["value"] for b in bars), default=0)
+    for j, bar in enumerate(bars):
+        first, last = j == 0, j == len(bars) - 1
+        if first and not last:      # .brow.top: bold label, accent fill
+            fill, label_color, label_bold = "accent", "ink", True
+        elif last and not first:    # .brow.last: secondary-tint fill
+            fill, label_color, label_bold = "secondary_tint4", "body", False
+        else:
+            fill, label_color, label_bold = "accent_tint3", "body", False
+        slide_obj.text_box(MARGIN_X, y, CONTENT_W, label_h,
+                           [{"text": bar["label"], "size": 10, "bold": label_bold,
+                             "color": label_color}],
+                           autofit=True, name=f"Bar label {j + 1}")
+        slide_obj.line(MARGIN_X, y + label_h + inner_gap + track_h / 2,
+                       MARGIN_X + track_w, y + label_h + inner_gap + track_h / 2,
+                       color="fill", width_pt=max(track_h * 0.75, 0.75),
+                       name=f"Bar track {j + 1}")
+        width = track_w * bar["value"] / top_value if top_value > 0 else 0.0
+        slide_obj.rect(MARGIN_X, y + label_h + inner_gap, max(width, 1.0), track_h,
+                       fill=fill, radius=3, name=f"Bar {j + 1} fill")
+        slide_obj.text_box(MARGIN_X + track_w + 13, y + label_h + inner_gap - 4,
+                           val_w, 20,
+                           [{"text": bar["display"], "size": 10.5, "bold": True,
+                             "color": "ink"}],
+                           align="right", name=f"Bar value {j + 1}")
+        y += group_h + group_gap
+    if note:
+        slide_obj.text_box(MARGIN_X, y + 5, CONTENT_W, 18,
+                           [{"text": note, "size": 9.5, "color": "muted"}],
+                           name="Bars note")
+    _footer(slide_obj, spec, deck_title, theme)
+
+
+def _quote_pptx_slide(pres, slide, deck, deck_title, theme, n):
+    """Large quotation with attribution (mirrors .quote-text with its
+    accent quotation marks and .quote-attr)."""
+    spec = _spec_of(slide, deck, n)
+    slide_obj = _new_slide(pres, spec)
+    if slide.get("title"):
+        _header(slide_obj, spec)
+    else:
+        _eyebrow_head(slide_obj, spec["eyebrow"])
+    runs = [{"text": "\u201c", "size": 17, "bold": True, "color": "accent"},
+            {"text": slide["quote"], "size": 17, "color": "ink"},
+            {"text": "\u201d", "size": 17, "bold": True, "color": "accent"}]
+    paras = [{"runs": runs, "line_spacing": 1.4}]
+    if slide.get("attribution"):
+        paras.append({"text": slide["attribution"].upper(), "size": 9.5,
+                      "bold": True, "color": "muted", "space_before": 18})
+    slide_obj.text_box(MARGIN_X, 150, CONTENT_W, 460, paras,
+                       anchor="ctr", autofit=True, name="Quote")
+    _footer(slide_obj, spec, deck_title, theme)
+
+
+def _closing_pptx_slide(pres, slide, deck, deck_title, theme, n):
+    """Headline plus numbered next steps, each step over a hairline rule,
+    the whole block one centered group (mirrors .layout-closing / .steps /
+    .step / .step-n)."""
+    spec = _spec_of(slide, deck, n)
+    slide_obj = _new_slide(pres, spec)
+    _eyebrow_head(slide_obj, spec["eyebrow"])
+    steps = slide["steps"]
+    text_w = CONTENT_W - 46
+    head_h = max(_est_lines(slide["headline"], CONTENT_W, 26, bold=True)
+                 * 26 * 1.12, 30)
+    step_hs = [8 + max(_est_lines(step, text_w, 12) * 12 * 1.45, 17) + 8
+               for step in steps]
+    total = head_h + 20 + sum(step_hs)
+    top = max(140, 140 + (480 - total) / 2)
+    slide_obj.text_box(MARGIN_X, top, CONTENT_W, head_h,
+                       [{"text": slide["headline"], "size": 26, "bold": True,
+                         "color": "ink", "line_spacing": 1.12}],
+                       autofit=True, name="Closing headline")
+    sy = top + head_h + 20
+    for j, (step, step_h) in enumerate(zip(steps, step_hs)):
+        slide_obj.line(MARGIN_X, sy, SLIDE_W - MARGIN_X, sy,
+                       color="line", width_pt=1.0, name=f"Closing step rule {j + 1}")
+        slide_obj.text_box(MARGIN_X, sy + 8, 36, 17,
+                           [{"text": f"{j + 1:02d}", "size": 10, "bold": True,
+                             "color": "accent"}],
+                           name=f"Closing step number {j + 1}")
+        slide_obj.text_box(MARGIN_X + 46, sy + 7, text_w, step_h - 14,
+                           [{"text": step, "size": 12, "color": "body",
+                             "line_spacing": 1.45}],
+                           autofit=True, name=f"Closing step {j + 1}")
+        sy += step_h
+    _footer(slide_obj, spec, deck_title, theme)
+
+
+_SLIDE_LIST_RENDERERS = {
+    "cover": _deck_cover_slide,
+    "section": _section_pptx_slide,
+    "agenda": _agenda_pptx_slide,
+    "statement": _deck_statement_slide,
+    "bullets": _deck_bullets_slide,
+    "two_column": _two_column_pptx_slide,
+    "three_values": _three_values_pptx_slide,
+    "compare": _compare_pptx_slide,
+    "bars": _bars_pptx_slide,
+    "facet": _deck_facet_slide,
+    "quote": _quote_pptx_slide,
+    "sources": _deck_sources_slide,
+    "closing": _closing_pptx_slide,
+}
+
+
+def build_presentation_from_deck(deck, theme="neutral"):
+    """Compose the .pptx from a validated slide-list deck dict (one slide
+    per authored slide, in list order; the cover is slide 1)."""
+    theme_obj = theme if isinstance(theme, dict) else load_theme(theme)
+    deck_title = deck["title"]
+    pres = Presentation(theme_obj, title=deck_title, creator="render_pptx")
+    for n, slide in enumerate(deck["slides"], start=1):
+        _SLIDE_LIST_RENDERERS[slide["layout"]](pres, slide, deck, deck_title, theme_obj, n)
+    return pres
+
+
+def render_pptx_slides(deck, out_path, theme="neutral"):
+    """Validate a slide-list deck dict, render it, and write the .pptx."""
+    validate_deck(deck)
+    pres = build_presentation_from_deck(deck, theme)
+    out = Path(out_path)
+    if str(out.parent) and not out.parent.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+    pres.save(str(out))
+    return str(out)
+
+
 def _load_json(path):
     try:
         with open(path, encoding="utf-8") as f:
@@ -340,18 +816,21 @@ def _load_json(path):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Render a native editable PowerPoint deck from a render model (E4-R3)",
+        description="Render a native editable PowerPoint deck from a render model (E4-R3) "
+                    "or an authored slide list (E5-R3)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python3 render_pptx.py --model render_model.json --out deck.pptx
   python3 render_pptx.py --report report.md --manifest run_manifest.json --out deck.pptx
   python3 render_pptx.py --report report.md --theme tests/fixtures/themes/alt --out deck.pptx
+  python3 render_pptx.py --slides deck.json --out deck.pptx
         """,
     )
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--model", help="render model JSON (from build_render_model.py)")
     src.add_argument("--report", "-r", help="report markdown; the model is built in-process")
+    src.add_argument("--slides", help="deck slide-list JSON (schemas/deck_spec.schema.json)")
     ap.add_argument("--manifest", "-m", default=None, help="run_manifest.json for --report")
     ap.add_argument("--format", "-f", default=None,
                     choices=sorted(FORMAT_DISPLAY.keys()),
@@ -370,6 +849,17 @@ Examples:
             print(f"ERROR: render model is missing {', '.join(missing)}: {args.model}",
                   file=sys.stderr)
             sys.exit(1)
+    elif args.slides:
+        if args.manifest or args.format:
+            ap.error("--manifest/--format apply to --report, not --slides")
+        try:
+            deck = load_deck(args.slides)
+        except DeckError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(1)
+        out = render_pptx_slides(deck, args.out, theme=args.theme)
+        print(f"wrote {out}")
+        return
     else:
         report_path = Path(args.report)
         if not report_path.exists():

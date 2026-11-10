@@ -3,8 +3,13 @@
 A research skill for Claude Code and other agent harnesses that read
 `SKILL.md` skills. It produces citation-backed reports in a format matched to
 the question, with an evidence store on disk, two independent citation
-verifiers, a readability gate every report must pass, and a themed,
-self-contained HTML deliverable gated by theme QA.
+verifiers, and a readability gate every report must pass. Deliverables: a
+themed, self-contained HTML report (every research run), a PDF, and slide
+decks — a self-contained animated HTML deck and an editable PowerPoint
+(.pptx) from the same slide list. Decks can be authored from finished
+research, from an existing report, or from the user's own notes or outline;
+see [reference/slide-decks.md](reference/slide-decks.md). All rendered
+output is gated by theme QA.
 
 **This is a fork.** It started as a hard fork of
 [199-biotechnologies/claude-deep-research-skill](https://github.com/199-biotechnologies/claude-deep-research-skill)
@@ -35,11 +40,13 @@ changed.
   report, in any of the five formats, as a self-contained themed HTML page
   (default theme `neutral`, see `themes/`), and `scripts/check_theme.py`
   gates the output — 0 errors required before delivery.
-- **Optional slide deck.** `scripts/render_deck.py` renders the same finished
-  report as a self-contained themed deck, gated by the same theme QA.
-- **Optional PowerPoint deck.** `scripts/render_pptx.py` renders the same
-  finished report as a native, editable themed `.pptx` (standard library
-  only, nothing to install), gated by the same theme QA.
+- **Optional slide decks.** `scripts/render_deck.py` and
+  `scripts/render_pptx.py` render a deck authored as a JSON slide list
+  (`scripts/deck_spec.py` validates and exports it) to a self-contained
+  themed HTML deck and a native, editable `.pptx` (standard library only,
+  nothing to install), gated by the same theme QA. Decks come from a
+  research run, an existing report, or any notes — see
+  [reference/slide-decks.md](reference/slide-decks.md).
 - **Contested topics.** `references/contested-topics.md` requires every facet
   of a contested question to be listed and steelmanned, and a verdict only when
   the user asks for one. `validate_report.py --manifest` enforces facet
@@ -64,6 +71,9 @@ vendored in `vendor/`. Optional extras are listed in `requirements.txt`.
 
 Ask for research in plain language; the skill triggers on phrases like
 "deep research", "research report", "compare X vs Y" or "state of the art".
+It also triggers on "slide deck", "slides", "presentation", "PowerPoint",
+".pptx", "make a deck", or "turn this into slides" — decks come from a
+research run, a report it already wrote, or your own notes.
 
 ```
 research the evidence on four-day work weeks and productivity

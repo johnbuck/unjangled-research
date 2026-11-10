@@ -1,0 +1,458 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeckSpec",
+  "description": "A deck authored as a JSON slide list: deck-level title and defaults plus one entry per slide naming a layout and that layout's content fields. Validated by scripts/deck_spec.py and rendered by render_deck.py --slides (HTML) and render_pptx.py --slides (PowerPoint). Slide numbers are positional; the cover is slide 1.",
+  "type": "object",
+  "required": ["title", "slides"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Deck title; the cover headline and the footer label's {title}"
+    },
+    "subtitle": {
+      "type": "string",
+      "description": "Default cover subtitle, used when the cover slide sets none"
+    },
+    "date": {
+      "type": ["string", "null"],
+      "description": "Deck date line on the cover, used when the cover slide sets none"
+    },
+    "eyebrow": {
+      "type": "string",
+      "description": "Default cover eyebrow, used when the cover slide sets none"
+    },
+    "footer_section": {
+      "type": "string",
+      "description": "Default section name in every slide footer, used when a slide sets no section"
+    },
+    "slides": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/slide" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "notes": {
+      "type": "string",
+      "description": "Speaker notes; '|' separates note lines shown in the notes pane and on the notes page"
+    },
+    "section": {
+      "type": "string",
+      "description": "Section name in this slide's footer label; defaults to footer_section, else the layout name"
+    },
+    "ref": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "A [N] citation number pointing at the sources slide"
+    },
+    "refs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ref" },
+      "description": "[N] citation numbers pointing at the sources slide"
+    },
+    "bullet": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "One bullet point; one idea, short enough for 1280x720"
+        },
+        "refs": { "$ref": "#/$defs/refs" }
+      },
+      "additionalProperties": false
+    },
+    "stat": {
+      "type": "object",
+      "required": ["value", "label"],
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "The number verbatim from its source (e.g. \"76%\", \"2.4x\", \"48,000 stars\"); never computed or invented; label sample data"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 90,
+          "description": "What the value counts, including its [N] ref when it has one"
+        },
+        "ref": {
+          "type": ["integer", "null"],
+          "description": "First [N] citation behind the value, when one exists"
+        }
+      },
+      "additionalProperties": false
+    },
+    "panel": {
+      "type": "object",
+      "required": ["title"],
+      "properties": {
+        "title": { "type": "string" },
+        "body": {
+          "type": "string",
+          "maxLength": 350,
+          "description": "Paragraph text for this panel"
+        },
+        "bullets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": {
+                "type": "string",
+                "maxLength": 120,
+                "description": "One bullet point; one idea, short enough for its half-width panel"
+              },
+              "refs": { "$ref": "#/$defs/refs" }
+            },
+            "additionalProperties": false
+          },
+          "description": "Bullet points for this panel (body and bullets: use one, not both)"
+        }
+      },
+      "additionalProperties": false,
+      "anyOf": [{ "required": ["body"] }, { "required": ["bullets"] }]
+    },
+    "value": {
+      "type": "object",
+      "required": ["title", "body"],
+      "properties": {
+        "title": { "type": "string", "maxLength": 45 },
+        "body": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "One or two sentences explaining the value"
+        }
+      },
+      "additionalProperties": false
+    },
+    "option": {
+      "type": "object",
+      "required": ["name", "rows"],
+      "properties": {
+        "tag": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Small label above the option name; defaults to \"Option A\" / \"Option B\""
+        },
+        "name": { "type": "string", "maxLength": 45 },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": { "type": "string", "maxLength": 60 },
+          "description": "The option's rows: pains on the left option, benefits on the right"
+        },
+        "kicker": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "One-line takeaway at the bottom of the card"
+        }
+      },
+      "additionalProperties": false
+    },
+    "bar": {
+      "type": "object",
+      "required": ["label", "value", "display"],
+      "properties": {
+        "label": { "type": "string", "maxLength": 60 },
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The bar's magnitude; bars are ranked and scaled to the largest value"
+        },
+        "display": {
+          "type": "string",
+          "maxLength": 16,
+          "description": "The value shown at the bar's end (e.g. \"64%\", \"1.2x\")"
+        }
+      },
+      "additionalProperties": false
+    },
+    "side": {
+      "type": "object",
+      "required": ["label", "summary"],
+      "properties": {
+        "label": { "type": "string", "maxLength": 40 },
+        "summary": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "One or two sentences stating this side's position"
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": ["n", "title"],
+      "properties": {
+        "n": { "$ref": "#/$defs/ref" },
+        "title": { "type": "string", "maxLength": 70 },
+        "publisher": { "type": ["string", "null"], "maxLength": 60 },
+        "url": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "slide": {
+      "oneOf": [
+        {
+          "required": ["layout", "title"],
+          "properties": {
+            "layout": { "const": "cover" },
+            "title": { "type": "string", "maxLength": 120 },
+            "eyebrow": { "type": "string", "description": "Cover eyebrow; defaults to the deck's eyebrow" },
+            "subtitle": { "type": "string", "maxLength": 160, "description": "Defaults to the deck's subtitle" },
+            "date": { "type": ["string", "null"], "description": "Defaults to the deck's date" },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "title"],
+          "properties": {
+            "layout": { "const": "section" },
+            "title": { "type": "string", "maxLength": 90, "description": "The section name, shown large" },
+            "eyebrow": { "type": "string" },
+            "sub": { "type": "string", "maxLength": 200, "description": "One line under the section name" },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "title", "items"],
+          "properties": {
+            "layout": { "const": "agenda" },
+            "title": { "type": "string", "maxLength": 30 },
+            "eyebrow": { "type": "string" },
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 5,
+              "items": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                  "title": { "type": "string", "maxLength": 20 },
+                  "desc": { "type": "string", "maxLength": 55, "description": "One-line description" }
+                },
+                "additionalProperties": false
+              }
+            },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "headline"],
+          "properties": {
+            "layout": { "const": "statement" },
+            "eyebrow": { "type": "string" },
+            "headline": {
+              "type": "string",
+              "maxLength": 150,
+              "description": "The one-sentence point this slide makes"
+            },
+            "stats": {
+              "type": "array",
+              "maxItems": 3,
+              "items": { "$ref": "#/$defs/stat" }
+            },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "title", "bullets"],
+          "properties": {
+            "layout": { "const": "bullets" },
+            "title": { "type": "string", "maxLength": 90 },
+            "eyebrow": { "type": "string" },
+            "bullets": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 5,
+              "items": { "$ref": "#/$defs/bullet" }
+            },
+            "refs": {
+              "$ref": "#/$defs/refs",
+              "description": "Evidence [N] refs, shown only when no bullets render (the finding fallback)"
+            },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "title", "left", "right"],
+          "properties": {
+            "layout": { "const": "two_column" },
+            "title": { "type": "string", "maxLength": 90 },
+            "eyebrow": { "type": "string" },
+            "left": { "$ref": "#/$defs/panel" },
+            "right": { "$ref": "#/$defs/panel" },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "title", "values"],
+          "properties": {
+            "layout": { "const": "three_values" },
+            "title": { "type": "string", "maxLength": 42 },
+            "eyebrow": { "type": "string" },
+            "values": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": { "$ref": "#/$defs/value" }
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 100,
+              "description": "Qualifier line under the columns"
+            },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "title", "options"],
+          "properties": {
+            "layout": { "const": "compare" },
+            "title": { "type": "string", "maxLength": 35 },
+            "eyebrow": { "type": "string" },
+            "options": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "$ref": "#/$defs/option" }
+            },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "title", "bars"],
+          "properties": {
+            "layout": { "const": "bars" },
+            "title": { "type": "string", "maxLength": 90 },
+            "eyebrow": { "type": "string" },
+            "bars": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 6,
+              "items": { "$ref": "#/$defs/bar" }
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "Source or qualifier line under the bars; label sample data here"
+            },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "title"],
+          "properties": {
+            "layout": { "const": "facet" },
+            "title": { "type": "string", "maxLength": 90 },
+            "eyebrow": { "type": "string" },
+            "sides": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": { "$ref": "#/$defs/side" }
+            },
+            "bullets": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 3,
+              "items": { "$ref": "#/$defs/bullet" },
+              "description": "Fallback bullets when the facet has no sides"
+            },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false,
+          "anyOf": [{ "required": ["sides"] }, { "required": ["bullets"] }]
+        },
+        {
+          "required": ["layout", "quote"],
+          "properties": {
+            "layout": { "const": "quote" },
+            "title": { "type": "string", "maxLength": 35 },
+            "eyebrow": { "type": "string" },
+            "quote": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 400,
+              "description": "The quoted words, without quotation marks"
+            },
+            "attribution": {
+              "type": "string",
+              "maxLength": 120,
+              "description": "Who said or wrote it, and where"
+            },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "title", "sources"],
+          "properties": {
+            "layout": { "const": "sources" },
+            "title": { "type": "string", "maxLength": 40 },
+            "eyebrow": { "type": "string" },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 12,
+              "items": { "$ref": "#/$defs/source" }
+            },
+            "more_sources": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Count of sources beyond the listed ones; shown as \"+N more in the full report\""
+            },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["layout", "headline", "steps"],
+          "properties": {
+            "layout": { "const": "closing" },
+            "eyebrow": { "type": "string" },
+            "headline": { "type": "string", "maxLength": 90 },
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": { "type": "string", "maxLength": 120 },
+              "description": "Numbered next steps, in order"
+            },
+            "notes": { "$ref": "#/$defs/notes" },
+            "section": { "$ref": "#/$defs/section" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

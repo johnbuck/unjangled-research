@@ -1,6 +1,6 @@
 ---
 name: unjangled-research
-description: Use when the user needs multi-source research with citation tracking, evidence persistence, and structured report generation. Triggers on "deep research", "comprehensive analysis", "research report", "compare X vs Y", "analyze trends", or "state of the art". Not for simple lookups, debugging, or questions answerable with 1-2 searches.
+description: Use when the user needs multi-source research with citation tracking, evidence persistence, and structured report generation. Triggers on "deep research", "comprehensive analysis", "research report", "compare X vs Y", "analyze trends", or "state of the art". Not for simple lookups, debugging, or questions answerable with 1-2 searches. The skill also composes slide decks — a self-contained animated HTML deck and an editable PowerPoint (.pptx) from the same slide list — from finished research, from an existing report, or from the user's own notes or outline; triggers on "slide deck", "slides", "presentation", "PowerPoint", ".pptx", "make a deck", or "turn this into slides". Also renders a themed HTML report and a PDF.
 ---
 
 # Unjangled Research
@@ -13,12 +13,43 @@ Deliver citation-tracked research reports through a structured pipeline with evi
 
 ---
 
+## Outputs
+
+This skill produces four deliverables: a themed HTML report, an HTML slide deck, an editable PowerPoint (.pptx) file, and a PDF. The report is the research output; decks are authored as a JSON slide list and rendered from it — from finished research, from an existing report, or from the user's own notes or outline, all covered in [slide-decks.md](./reference/slide-decks.md). The agent runs every command from the skill directory (the folder containing `scripts/` and `themes/`).
+
+| Output | When | Command |
+|---|---|---|
+| HTML report | Every research run | `python3 scripts/render_report.py --report [report.md] --manifest [run_dir]/run_manifest.json --format [format] --out [report.html]` |
+| HTML slide deck | When the user wants a deck, slides, or a presentation | `python3 scripts/render_deck.py --slides [deck.json] --out [deck.html]` — or `--report [report.md]` straight from a finished report |
+| PowerPoint (.pptx) | When the user wants PowerPoint, a .pptx, or editable slides | `python3 scripts/render_pptx.py --slides [deck.json] --out [deck.pptx]` — or `--report [report.md]` straight from a finished report |
+| PDF | When the user wants a PDF and WeasyPrint is installed | `weasyprint [report.html] [report.pdf]` — rendered from the gated HTML report |
+
+Theme QA gate on every rendered output (report, deck, .pptx): `python3 scripts/check_theme.py [report.html|deck.html|deck.pptx] [--theme <name|path>]` — must report 0 errors before that output is delivered. On a research run the deck and the .pptx are additional outputs, never a replacement for the HTML report; a deck requested on its own needs no research run at all.
+
+---
+
+## Slide decks
+
+When the user wants a deck, slides, a presentation, or a PowerPoint, follow [slide-decks.md](./reference/slide-decks.md) — the authoring guide. Three entry paths:
+
+- **Path A — a topic:** run the research pipeline first (Phases 1–8), deliver the report, then make the deck from the finished research.
+- **Path B — an existing report from this skill:** export its slide plan (`python3 scripts/deck_spec.py --report [report.md] --out [deck.json]`), edit the JSON (reorder, retitle, cut, add slides in any layout), render.
+- **Path C — the user's own notes, document, or outline:** write the slide list directly from their material — no research run; never add claims or numbers that are not in it.
+
+Every path ends the same way: render both outputs (`render_deck.py --slides`, `render_pptx.py --slides`), gate each with `check_theme.py` at 0 errors, look at the deck, fix the slide list (never the generated files), deliver.
+
+---
+
 ## Decision Tree
 
 ```
 Request Analysis
 +-- Simple lookup? --> STOP: Use WebSearch
 +-- Debugging? --> STOP: Use standard tools
++-- Deck / slides / PowerPoint request? --> slide-decks.md (reference/slide-decks.md)
+|   +-- Topic to research? --> Path A: research run first, then the deck
+|   +-- A report from this skill? --> Path B: export its plan, edit, render
+|   +-- The user's own notes/outline? --> Path C: write the slide list directly
 +-- Complex analysis needed? --> CONTINUE
 
 Mode Selection
@@ -57,8 +88,9 @@ Mode Selection
 1. **Phase 1-7:** Load [methodology.md](./reference/methodology.md) for detailed phase instructions
 2. **Phase 8 (Report):** Load [report-assembly.md](./reference/report-assembly.md) for progressive generation
 3. **HTML/PDF output:** Load [html-generation.md](./reference/html-generation.md)
-4. **Quality checks:** Load [quality-gates.md](./reference/quality-gates.md)
-5. **Long reports (>18K words):** Load [continuation.md](./reference/continuation.md)
+4. **Slide deck / PowerPoint output:** Load [slide-decks.md](./reference/slide-decks.md)
+5. **Quality checks:** Load [quality-gates.md](./reference/quality-gates.md)
+6. **Long reports (>18K words):** Load [continuation.md](./reference/continuation.md)
 
 **Templates:**
 - Report structure: [report_template.md](./templates/report_template.md) (default fallback)
@@ -73,11 +105,11 @@ Mode Selection
 - `python scripts/readability_check.py [report_path]` (**MANDATORY — run on EVERY report, every time, before HTML/PDF generation; never skip, no exceptions.** Uses the vendored `textstat` in `vendor/`; no install needed. Must exit 0; failures tell you exactly what to fix: pipeline-internals leakage → move narration to run manifest; citation density → 1-2 refs/sentence, batch the rest at paragraph level; sentence length / reading grade → split compound sentences, unchain appositive lists, prefer plain words)
 - `scripts/md_to_html.py` — markdown converter used internally by the render model; not a delivery step
 - `python scripts/render_report.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [report.html]` — themed renderer; builds the render model in-process and writes a self-contained HTML report (`--theme <name|path>` overrides the default `neutral` theme)
-- `python scripts/render_deck.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [deck.html]` — optional themed slide deck from the same inputs as the report (`--theme <name|path>` as above); offer it when the user asks for slides, a presentation, or a deck — otherwise deliver the report alone
-- `python scripts/render_pptx.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [deck.pptx]` — optional themed editable PowerPoint deck from the same inputs as the report (`--theme <name|path>` as above); offer it when the user asks for PowerPoint, `.pptx`, or editable slides — it is an additional output, in addition to the HTML report, never instead of it
+- `python scripts/render_deck.py --slides [deck.json] --out [deck.html]` — themed HTML slide deck from an authored slide list; `--report [path] --manifest ... --format ...` renders straight from a finished report (`--theme <name|path>` as above); see [slide-decks.md](./reference/slide-decks.md) for authoring
+- `python scripts/render_pptx.py --slides [deck.json] --out [deck.pptx]` — native editable PowerPoint deck from the same slide list or report (`--theme <name|path>` as above); an additional output, never a replacement for the HTML report
 - `python scripts/check_theme.py [report.html] [--theme <name|path>]` — theme QA gate on the rendered HTML and on `.pptx` decks; 0 errors required before delivery (exit 1 on any ERROR)
 
-**Phase 8 order (explicit):** `validate_report.py` → `readability_check.py` → `render_report.py` → `check_theme.py` — render only after the first two pass, deliver only at 0 QA errors. When the agent also produces the optional deck: `render_deck.py` → `check_theme.py` on the deck, after the report passes its gate; and when the user also wants the editable PowerPoint file: `render_pptx.py` → `check_theme.py` on the `.pptx`, likewise after the report passes. Full loop with the citation verifiers: [quality-gates.md](./reference/quality-gates.md).
+**Phase 8 order (explicit):** `validate_report.py` → `readability_check.py` → `render_report.py` → `check_theme.py` — render only after the first two pass, deliver only at 0 QA errors. When the run also includes a deck, follow [slide-decks.md](./reference/slide-decks.md) after the report passes its gate: author or export the slide list, render `render_deck.py` and (when wanted) `render_pptx.py`, and gate each at 0 errors. A deck with no research run (paths B and C) skips Phases 1-8 entirely and goes straight to the guide. Full loop with the citation verifiers: [quality-gates.md](./reference/quality-gates.md).
 
 ---
 
@@ -105,7 +137,7 @@ Every comprehensive run answers at planning: "which facets of this topic are act
 - `run_manifest.json` — query, mode, assumptions, provider config
 - `projects.jsonl` — discovery runs only: one row per candidate per `schemas/discovery_project.schema.json` (name, registry, tier, metrics with asOf dates); the report's comparison matrix renders FROM this file — never the reverse
 - HTML report (themed, self-contained)
-- Slide deck (optional, themed, self-contained — when the user asked for one)
+- Slide deck (optional, themed, self-contained — when the user asked for one; author from research, a report, or the user's own notes per [slide-decks.md](./reference/slide-decks.md))
 - PowerPoint deck (optional, editable .pptx, themed)
 - PDF (professional print, auto-opened)
 

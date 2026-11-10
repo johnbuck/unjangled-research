@@ -1,0 +1,172 @@
+{
+  "title": "Sample layout tour",
+  "subtitle": "Every generic deck layout in one sample deck, rendered from a slide list.",
+  "date": "November 2026",
+  "eyebrow": "Layout tour · Sample data",
+  "footer_section": "Layout tour",
+  "slides": [
+    {
+      "layout": "cover",
+      "title": "Sample layout tour",
+      "eyebrow": "Layout tour · Sample data",
+      "subtitle": "Every generic deck layout in one sample deck, rendered from a slide list.",
+      "date": "November 2026 · Sample data",
+      "notes": "Cover slide|All content in this deck is sample data"
+    },
+    {
+      "layout": "section",
+      "title": "The layouts",
+      "eyebrow": "Part 01",
+      "sub": "One slide per layout, each with sample content.",
+      "notes": "Section divider between the cover and the tour"
+    },
+    {
+      "layout": "agenda",
+      "title": "What this deck shows",
+      "eyebrow": "Agenda",
+      "items": [
+        {"title": "Statement", "desc": "One sentence with three stat tiles (sample data)"},
+        {"title": "Bullets and columns", "desc": "Points, two panels, three values"},
+        {"title": "Comparisons", "desc": "Two options side by side, ranked bars (sample data)"},
+        {"title": "Perspectives", "desc": "Facet sides and a quote"},
+        {"title": "Sources and close", "desc": "Where the samples came from, next steps"}
+      ],
+      "notes": "Agenda with five rows"
+    },
+    {
+      "layout": "statement",
+      "headline": "One format now covers every generic slide layout",
+      "eyebrow": "Statement",
+      "stats": [
+        {"value": "13", "label": "generic layouts in the authoring set (sample data)", "ref": 1},
+        {"value": "3", "label": "stat tiles fit under one statement headline (sample data)", "ref": null},
+        {"value": "0", "label": "brand-specific layouts carried over from the source decks (sample data)", "ref": 2}
+      ],
+      "notes": "Statement layout|Numbers are sample data"
+    },
+    {
+      "layout": "bullets",
+      "title": "What a bullets slide holds",
+      "eyebrow": "Bullets",
+      "bullets": [
+        {"text": "A short title and up to five points, one idea each.", "refs": [1]},
+        {"text": "Every point carries its [N] evidence refs.", "refs": [1]},
+        {"text": "Speaker notes hold the fuller text each slide condenses.", "refs": []},
+        {"text": "Sample content, labelled where numbers appear.", "refs": []}
+      ],
+      "notes": "Bullets layout|Sample content"
+    },
+    {
+      "layout": "two_column",
+      "title": "Two titled panels side by side",
+      "eyebrow": "Two columns",
+      "left": {
+        "title": "Write it as data",
+        "body": "A slide list is JSON: one entry per slide naming its layout and fields. Agents write data, not markup, and the same list renders to HTML and PowerPoint."
+      },
+      "right": {
+        "title": "What the panels hold",
+        "bullets": [
+          {"text": "A titled panel with paragraph body text.", "refs": []},
+          {"text": "Or a titled panel with bullet points.", "refs": []},
+          {"text": "Use body or bullets per panel, never both.", "refs": []}
+        ]
+      },
+      "notes": "Two-column layout|Left panel uses body, right uses bullets"
+    },
+    {
+      "layout": "three_values",
+      "title": "Three values in numbered columns",
+      "eyebrow": "Values",
+      "values": [
+        {"title": "Compose", "body": "Any deck from thirteen generic layouts, each documented with its fields and limits."},
+        {"title": "Render", "body": "One slide list renders to a themed HTML deck and an editable PowerPoint file."},
+        {"title": "Check", "body": "Theme QA and a visual pass run on the rendered deck before it is delivered."}
+      ],
+      "note": "Sample data — illustrative value statements.",
+      "notes": "Three-values layout|Sample content"
+    },
+    {
+      "layout": "compare",
+      "title": "Hand-built slides vs. a slide list",
+      "eyebrow": "Compare",
+      "options": [
+        {
+          "tag": "Hand-built",
+          "name": "Markup by hand",
+          "rows": [
+            "Every deck re-solves layout, theme, and footer rules.",
+            "No validation before the file is opened in a browser.",
+            "Fixes happen after the visual check, one deck at a time."
+          ],
+          "kicker": "Effort repeats with every deck."
+        },
+        {
+          "tag": "Slide list",
+          "name": "Authored as data",
+          "rows": [
+            "Layouts, limits, and themes come validated from one format.",
+            "The same list renders to HTML and PowerPoint.",
+            "Theme QA runs before any human looks at the deck."
+          ],
+          "kicker": "Effort lives in the engine, once."
+        }
+      ],
+      "notes": "Compare layout|Sample contrast, no real measurements"
+    },
+    {
+      "layout": "bars",
+      "title": "Ranked bars with values",
+      "eyebrow": "Bars · Sample data",
+      "bars": [
+        {"label": "Layout tours rendered", "value": 64, "display": "64%"},
+        {"label": "Round-trips verified", "value": 41, "display": "41%"},
+        {"label": "Themes checked", "value": 33, "display": "33%"},
+        {"label": "Slides revised by hand", "value": 22, "display": "22%"}
+      ],
+      "note": "Sample data — share of a hypothetical 128-sample run with each outcome.",
+      "notes": "Bars layout|All values are sample data"
+    },
+    {
+      "layout": "facet",
+      "title": "One contested facet, two sides",
+      "eyebrow": "Contested facet",
+      "sides": [
+        {"label": "Slides as data", "summary": "A validated slide list keeps authoring, rendering, and QA separable, and one format feeds two renderers."},
+        {"label": "Slides as markup", "summary": "Direct HTML gives finer control per deck, at the cost of re-solving theme and layout rules every time."}
+      ],
+      "notes": "Facet layout|Both sides are sample positions"
+    },
+    {
+      "layout": "quote",
+      "quote": "The slide list is the deck: authored once, rendered twice, checked before delivery.",
+      "attribution": "Sample attribution — the engine's own working rule",
+      "notes": "Quote layout|Sample quotation"
+    },
+    {
+      "layout": "sources",
+      "title": "4 sources",
+      "eyebrow": "Sources",
+      "sources": [
+        {"n": 1, "title": "Sampling atlas, 4th ed.", "publisher": "Statprobe Sampling Group", "url": null},
+        {"n": 2, "title": "Quarterly methods digest", "publisher": "Ridgeline Analytics", "url": "https://example.com/quarterly-methods"},
+        {"n": 3, "title": "Field notes on claim dating", "publisher": "Meridian Review", "url": null},
+        {"n": 4, "title": "Working paper on facets", "publisher": "Northline Institute", "url": null}
+      ],
+      "more_sources": 2,
+      "notes": "Sources layout|All entries are illustrative, sample data"
+    },
+    {
+      "layout": "closing",
+      "headline": "Compose the deck, then check it",
+      "eyebrow": "Closing",
+      "steps": [
+        "Outline the deck before writing any slide.",
+        "Write the slide list, one idea per slide.",
+        "Render it to HTML and run theme QA.",
+        "Look at every slide; fix overflow, then deliver."
+      ],
+      "notes": "Closing layout|Sample next steps"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+/* Generic deck layouts for authored slide lists (deck_spec.py) — the rules
+   for layouts that predate the slide-list format's section divider, two
+   titled panels, quote, and closing. Loaded only by render_deck.py's
+   --slides path (as extra_css) so the --report/--model decks keep their
+   byte-identical output (E5-R2); every other layout already has its rules
+   in deck.css and research.css. Colors come only from the theme's --rf-* tokens. */
+
+/* Section divider */
+.layout-divider .slide-main{align-content:center;gap:1.6cqw}
+.divider-title{font-size:4.6cqw;line-height:1.08;letter-spacing:-.015em;color:var(--rf-ink);max-width:20ch}
+
+/* Two titled panels */
+.two-col-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2.6cqw}
+.col-panel{border-radius:1.4cqw;padding:2.2cqw;display:grid;gap:1.2cqw;align-content:start;border:1px solid var(--rf-line)}
+.col-panel.tint{background:var(--rf-accent-t1);border-color:transparent}
+.col-panel h3{font-size:1.7cqw;line-height:1.25;color:var(--rf-ink)}
+.col-body{font-size:1.25cqw;line-height:1.5;color:var(--rf-body)}
+
+/* Quote */
+.layout-quote .slide-main{align-content:center;gap:1.8cqw}
+.quote-text{font-size:2.3cqw;line-height:1.4;font-weight:300;color:var(--rf-ink);max-width:46ch}
+.quote-text::before{content:"\201C";color:var(--rf-accent);font-weight:700}
+.quote-text::after{content:"\201D";color:var(--rf-accent);font-weight:700}
+.quote-attr{font-size:1.1cqw;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--rf-muted)}
+
+/* Closing: headline + numbered next steps */
+.layout-closing .slide-main{align-content:center;gap:2.4cqw}
+.closing-title{font-size:3.4cqw;line-height:1.12;letter-spacing:-.015em;color:var(--rf-ink);max-width:26ch}
+.steps{display:grid;gap:1.2cqw}
+.step{display:grid;grid-template-columns:2.6cqw minmax(0,1fr);gap:1.4cqw;align-items:baseline;font-size:1.3cqw;line-height:1.45;color:var(--rf-body);padding:1cqw 0;border-top:1px solid var(--rf-line)}
+.step-n{font-size:1.1cqw;font-weight:700;color:var(--rf-accent);font-variant-numeric:tabular-nums}
