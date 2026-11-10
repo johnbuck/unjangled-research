@@ -1,0 +1,167 @@
+# Unjangled Push policy for this repository.
+#
+# The remote is public and require_cut is set for it, so the [cut]
+# block below is mandatory: the history has exactly one root.
+#
+# Exemptions cover vendored English word lists, plus two narrow
+# entries at the end: a publisher name in a source-scoring table and
+# a letter run inside embedded font base64. There is one entry per
+# file and term ID that actually hits there, each pinned to the
+# file's current blob so an edited file is re-evaluated.
+#
+# This file loosens nothing at the public remote until its blob is
+# approved there with "unjangled-push policy approve origin".
+
+schema = 1
+min_guard_version = "0.1.0"
+term_list = "b1f7c229bf31bcb1d8ecbd1d41adf7a5"
+
+identity_allow = ["2216093+johnbuck@users.noreply.github.com"]
+
+[cut]
+single_root = true
+excluded_paths = []
+
+[[exempt]]
+rule = "term:T0001"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0001 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0003"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0003 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0009"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0009 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0013"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0013 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0014"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0014 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0041"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0041 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0087"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0087 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0088"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0088 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0089"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0089 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0093"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0093 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0094"
+path = "vendor/corpora/cmudict/cmudict"
+reason = "T0094 is an ordinary English word in the vendored CMU pronouncing dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "2259ddb5275ce1827ec75e2822868c866a982ec4"
+
+[[exempt]]
+rule = "term:T0088"
+path = "vendor/pyphen/dictionaries/hyph_en_GB.dic"
+reason = "T0088 is an ordinary English word in the vendored British English hyphenation dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "e19d0ea7508c59d767933e954345534bd33aa163"
+
+[[exempt]]
+rule = "term:T0090"
+path = "vendor/pyphen/dictionaries/hyph_en_GB.dic"
+reason = "T0090 is an ordinary English word in the vendored British English hyphenation dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "e19d0ea7508c59d767933e954345534bd33aa163"
+
+[[exempt]]
+rule = "term:T0088"
+path = "vendor/pyphen/dictionaries/hyph_en_US.dic"
+reason = "T0088 is an ordinary English word in the vendored US English hyphenation dictionary"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "d7dd292a7e5ca48221a893a7269e352152c65b4d"
+
+[[exempt]]
+rule = "term:T0013"
+path = "vendor/textstat/resources/en/easy_words.txt"
+reason = "T0013 is an ordinary English word in the vendored textstat easy-words list"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "dc5488eba44e9af22cf5161efaf0d07615b1ac0e"
+
+[[exempt]]
+rule = "term:T0089"
+path = "vendor/textstat/resources/en/easy_words.txt"
+reason = "T0089 is an ordinary English word in the vendored textstat easy-words list"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "dc5488eba44e9af22cf5161efaf0d07615b1ac0e"
+
+[[exempt]]
+rule = "term:T0014"
+path = "scripts/source_evaluator.py"
+reason = "academic publisher name (publisher domain, DOI prefix 10.1111) in a source-scoring table"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "cfcbeabb7660580c0be51b4889c7682be13f2ef3"
+
+[[exempt]]
+rule = "term:T0013"
+path = "themes/neutral/fonts.css"
+reason = "accidental letter run inside embedded Lato font base64"
+date = 2026-11-10
+expires = 2027-11-10
+blob = "d8c5ffd4f1abb43e74915e45312d4bd567f1ca22"
