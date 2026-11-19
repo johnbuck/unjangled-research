@@ -9,15 +9,29 @@ Catches fabricated citations by checking:
 4. Hallucination pattern detection (generic titles, suspicious patterns)
 5. Flags suspicious entries for manual review
 
+The bibliography is found and parsed with the shared rule in
+scripts/bibliography.py (E1-R1): the section starts at an exact
+'## Bibliography' or '## Sources' line, ends at the next '## ' heading
+only (a '###' subsection inside does not end it), and entries are
+'[N]', '- [N]' or '* [N]' lines.
+
 Usage:
     python verify_citations.py --report [path]
-    python verify_citations.py --report [path] --strict  # Fail on any unverified
+    python verify_citations.py --report [path] --strict
+
+Exit codes:
+    0  no suspicious citations and at least half the entries verified
+       (with --strict: every entry verified by DOI or URL)
+    1  any suspicious citation, fewer than half verified, no bibliography
+       section or no parseable entries, unreadable report, or (with
+       --strict) any entry that verified by neither DOI nor URL
 
 Does NOT require API keys - uses free DOI resolver and heuristics.
 """
 
 import sys
 import argparse
+import os
 import re
 from pathlib import Path
 from typing import List, Dict, Tuple
@@ -26,6 +40,14 @@ from urllib.parse import quote
 import json
 import time
 from datetime import datetime
+
+# Shared bibliography rule (E1-R1): this script must not keep its own
+# split or entry regex. Imported after the scripts dir is guaranteed
+# on sys.path (it is sys.path[0] when run as a script; tests insert it).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+from bibliography import parse_entries, split_bibliography
 
 class CitationVerifier:
     """Verify citations in research report"""
@@ -60,55 +82,37 @@ class CitationVerifier:
             sys.exit(1)
 
     def extract_bibliography(self) -> List[Dict]:
-        """Extract bibliography entries from report"""
-        pattern = r'## Bibliography(.*?)(?=##|\Z)'
-        match = re.search(pattern, self.content, re.DOTALL | re.IGNORECASE)
+        """Extract bibliography entries from the report.
 
-        if not match:
+        Boundaries and entry forms come from the shared rule in
+        scripts/bibliography.py (E1-R1): the section starts at an exact
+        '## Bibliography' or '## Sources' line, ends only at the next
+        '## ' heading (a '###' subsection inside does not end it), and
+        entries are '[N]', '- [N]' or '* [N]' lines. Non-entry lines in
+        the section (blank lines, '###' notes) are skipped.
+        """
+        before, section = split_bibliography(self.content)
+
+        if section is None:
             self.errors.append("No Bibliography section found")
             return []
 
-        bib_section = match.group(1)
-
-        # Parse entries: [N] Author (Year). "Title". Venue. URL
         entries = []
-        lines = bib_section.strip().split('\n')
+        for num, rest in parse_entries(section):
+            # Try to parse: Author (Year). "Title". Venue. URL
+            year_match = re.search(r'\((\d{4})\)', rest)
+            title_match = re.search(r'"([^"]+)"', rest)
+            doi_match = re.search(r'doi\.org/(10\.\S+)', rest)
+            url_match = re.search(r'https?://[^\s\)]+', rest)
 
-        current_entry = None
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-
-            # Check if starts with citation number [N]
-            match_num = re.match(r'^\[(\d+)\]\s+(.+)$', line)
-            if match_num:
-                if current_entry:
-                    entries.append(current_entry)
-
-                num = match_num.group(1)
-                rest = match_num.group(2)
-
-                # Try to parse: Author (Year). "Title". Venue. URL
-                year_match = re.search(r'\((\d{4})\)', rest)
-                title_match = re.search(r'"([^"]+)"', rest)
-                doi_match = re.search(r'doi\.org/(10\.\S+)', rest)
-                url_match = re.search(r'https?://[^\s\)]+', rest)
-
-                current_entry = {
-                    'num': num,
-                    'raw': rest,
-                    'year': year_match.group(1) if year_match else None,
-                    'title': title_match.group(1) if title_match else None,
-                    'doi': doi_match.group(1) if doi_match else None,
-                    'url': url_match.group(0) if url_match else None
-                }
-            elif current_entry:
-                # Multi-line entry, append to raw
-                current_entry['raw'] += ' ' + line
-
-        if current_entry:
-            entries.append(current_entry)
+            entries.append({
+                'num': num,
+                'raw': rest,
+                'year': year_match.group(1) if year_match else None,
+                'title': title_match.group(1) if title_match else None,
+                'doi': doi_match.group(1) if doi_match else None,
+                'url': url_match.group(0) if url_match else None
+            })
 
         return entries
 
@@ -317,7 +321,9 @@ class CitationVerifier:
         entries = self.extract_bibliography()
 
         if not entries:
-            print("L No bibliography entries found\n")
+            for e in self.errors or ["No bibliography entries found"]:
+                print(f"L {e}")
+            print()
             return False
 
         print(f"Found {len(entries)} citations\n")
@@ -360,27 +366,29 @@ class CitationVerifier:
                 print(f"  [{r['num']}] {r['issues'][0] if r['issues'] else 'Unknown'}")
             print()
 
-        # Decision (Enhanced 2025 - includes URL-verified as acceptable)
+        # Decision: the default run fails on any suspicious citation or
+        # when fewer than half the entries verified (E1-R4). --strict
+        # additionally fails when any entry verified by neither DOI nor
+        # URL, i.e. it demands every entry verified.
         total_verified = len(verified) + len(url_verified)
+        passed = True
 
         if suspicious:
-            print('WARNING: Suspicious citations detected')
-            if self.strict_mode:
-                print('  STRICT MODE: Failing due to suspicious citations')
-                return False
-            else:
-                print('  (Continuing in non-strict mode)')
+            print('FAIL: Suspicious citations detected')
+            passed = False
+
+        if total_verified / len(results) < 0.5:
+            print(f'FAIL: Less than 50% of citations verified '
+                  f'({total_verified}/{len(results)})')
+            passed = False
 
         if self.strict_mode and unverified:
             print('STRICT MODE: Unverified citations found')
-            return False
+            passed = False
 
-        if total_verified / len(results) < 0.5:
-            print('WARNING: Less than 50% citations verified')
-            return True  # Pass with warning
-        else:
+        if passed:
             print('CITATION VERIFICATION PASSED')
-            return True
+        return passed
 
 
 def main():
@@ -406,7 +414,9 @@ Uses free DOI resolver - no API key needed.
     parser.add_argument(
         '--strict',
         action='store_true',
-        help='Strict mode: fail on any unverified or suspicious citations'
+        help='Strict mode: additionally fail when any citation verified '
+             'by neither DOI nor URL (default already fails on suspicious '
+             'citations or fewer than half verified)'
     )
 
     args = parser.parse_args()

@@ -43,6 +43,31 @@
     "extracted_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "extraction_id": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the extract_claims.py extract run that appended this row; the same for every row of one run. Rows of the latest extraction_id are the current report (citation-order numbering reads only those). Absent on rows added by hand with extract_claims.py add."
+    },
+    "doc_position": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-based position of the claim sentence in document order within its extraction run."
+    },
+    "_citation_numbers": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "description": "Working field: the [N] numbers the sentence cited when extracted, resolved to cited_source_ids by verify_claim_support.py link through the run's display_numbers.json."
+    },
+    "_support_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Working field: token-overlap support score written by verify_claim_support.py verify when evidence quotes are linked."
+    },
+    "_support_notes": {
+      "type": "string",
+      "description": "Working field: the reason verify_claim_support.py verify gave for the score."
     }
   },
   "additionalProperties": false

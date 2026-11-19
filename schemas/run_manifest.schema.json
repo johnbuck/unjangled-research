@@ -29,6 +29,17 @@
         "ultradeep"
       ]
     },
+    "format": {
+      "type": "string",
+      "enum": [
+        "comparison",
+        "comprehensive-report",
+        "discovery-catalog",
+        "quick-brief",
+        "research-summary"
+      ],
+      "description": "Report format for this run; build_render_model.py reads it from the manifest when --format is not passed (validate_report.FORMATS)"
+    },
     "started_at": {
       "type": "string",
       "format": "date-time"
@@ -161,6 +172,14 @@
         "type": "string"
       },
       "description": "Facets of the topic the scope phase found actively disputed. Required for comprehensive-report runs; [] = no live disagreement found (auditable position). Non-empty => report must contain a Perspectives/Debate section covering every listed facet (validator-enforced via --manifest)."
+    },
+    "qa_notes": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null,
+      "description": "Justifications for QA WARNs (e.g. check_theme), recorded in the run manifest"
     }
   },
   "additionalProperties": false

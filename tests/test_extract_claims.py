@@ -209,5 +209,171 @@ class TestClaimID(unittest.TestCase):
         )
 
 
+class TestBibliographyRule(unittest.TestCase):
+    """F2 regression (E1-R1/E1-R12): a '### Sources of funding' subsection
+    is body, not a bibliography. On 35d132d everything from it on was
+    dropped (only 6 junk claims); all 25 body claims must be extracted,
+    and bibliography entries must never become claims."""
+
+    FUNDING_FIXTURE = os.path.join(FIXTURES, 'bibliography', 'funding_subsection_report.md')
+    ENTRY_FORMS_FIXTURE = os.path.join(FIXTURES, 'bibliography', 'entry_forms_report.md')
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        open(os.path.join(self.tmpdir, 'claims.jsonl'), 'w').close()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_claims_after_funding_subsection_extracted(self):
+        out = run_ec('extract', '--report', self.FUNDING_FIXTURE, '--dir', self.tmpdir)
+        self.assertEqual(out['status'], 'ok')
+        self.assertEqual(out['claims_added'], 25)
+        rows = run_ec('list', '--dir', self.tmpdir)['claims']
+        self.assertTrue(
+            any('foundation partnered with three universities' in r['text'] for r in rows),
+            'first funding sentence must survive as a claim',
+        )
+        self.assertTrue(
+            any('Matching gift programs' in r['text'] for r in rows),
+            'last funding sentence must survive as a claim',
+        )
+
+    def test_bibliography_entries_are_not_claims(self):
+        run_ec('extract', '--report', self.FUNDING_FIXTURE, '--dir', self.tmpdir)
+        rows = run_ec('list', '--dir', self.tmpdir)['claims']
+        self.assertFalse(
+            any(r['section_id'] in ('bibliography', 'sources') for r in rows),
+            'bibliography entries are citations, not claims',
+        )
+        self.assertFalse(any('Alpha Institute' in r['text'] for r in rows))
+
+    def test_postbib_appendix_claims_kept(self):
+        run_ec('extract', '--report', self.ENTRY_FORMS_FIXTURE, '--dir', self.tmpdir)
+        rows = run_ec('list', '--dir', self.tmpdir)['claims']
+        self.assertTrue(
+            any('appendix material' in r['text'].lower() for r in rows),
+            'post-bibliography appendix stays in claim scope',
+        )
+
+    def test_sources_named_body_sections_and_fenced_heading_kept(self):
+        """Review fix: only the real bibliography is dropped. '## Data
+        sources', '### Sources of funding' and '## Sources of funding' are
+        body; a fenced '## Bibliography' example is not a section heading,
+        so the prose after the fence stays a claim (the builder's
+        section-id skip dropped it)."""
+        fixture = os.path.join(FIXTURES, 'bibliography', 'sources_named_sections_report.md')
+        run_ec('extract', '--report', fixture, '--dir', self.tmpdir)
+        rows = run_ec('list', '--dir', self.tmpdir)['claims']
+        texts = ' '.join(r['text'] for r in rows)
+        for phrase in ('national registries', 'national foundation paid',
+                       'Corporate sponsors', 'Body prose continues',
+                       'appendix material'):
+            self.assertIn(phrase, texts)
+        for entry in ('Alpha Institute', 'Beta Trust', 'Gamma Corp'):
+            self.assertNotIn(entry, texts, 'bibliography entries are not claims')
+        self.assertNotIn('bibliography', {r['section_id'] for r in rows})
+
+    def test_citation_numbers_exclude_years_and_code(self):
+        report = os.path.join(self.tmpdir, 'report.md')
+        with open(report, 'w') as f:
+            f.write(
+                '## Finding\n\n'
+                'The Q4 revenue increased by 23 percent [4, 5] while the design from [2024] '
+                'and the snippet `config[9]` stay out of the citation numbers.\n'
+            )
+        run_ec('extract', '--report', report, '--dir', self.tmpdir)
+        rows = run_ec('list', '--dir', self.tmpdir)['claims']
+        self.assertEqual(rows[0]['_citation_numbers'], [4, 5])
+
+
+class TestExtractionStamping(unittest.TestCase):
+    """E1-R8/F13: rows carry extraction_id + doc_position; re-extract
+    supersedes, so the latest extraction is exactly the current report
+    in document order and never mixes rows from older extractions."""
+
+    REPORT_V1 = (
+        '# Stamped Report\n\n'
+        '## Finding 1\n\n'
+        'First sentence cites the earliest registered source [1].\n'
+        'Second sentence cites a later registered source [2].\n'
+        'Third sentence exists only in the first version of the report.\n\n'
+        '## Bibliography\n\n[1] A. [2] B.\n'
+    )
+    REPORT_V2 = (
+        '# Stamped Report\n\n'
+        '## Finding 1\n\n'
+        'Second sentence cites a later registered source [2].\n'
+        'First sentence cites the earliest registered source [1].\n'
+        'A rewritten third sentence replaced the original one entirely.\n\n'
+        '## Bibliography\n\n[1] A. [2] B.\n'
+    )
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        open(os.path.join(self.tmpdir, 'claims.jsonl'), 'w').close()
+        self.report_path = os.path.join(self.tmpdir, 'report.md')
+        with open(self.report_path, 'w') as f:
+            f.write(self.REPORT_V1)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    @staticmethod
+    def _latest(claims_path):
+        rows = [json.loads(l) for l in open(claims_path) if l.strip()]
+        stamped = [r for r in rows if r.get('extraction_id')]
+        latest = max(r['extraction_id'] for r in stamped)
+        latest_rows = [r for r in stamped if r['extraction_id'] == latest]
+        latest_rows.sort(key=lambda r: r['doc_position'])
+        return rows, latest_rows
+
+    def test_rows_stamped_in_document_order(self):
+        out = run_ec('extract', '--report', self.report_path, '--dir', self.tmpdir)
+        rows = run_ec('list', '--dir', self.tmpdir)['claims']
+        self.assertEqual(len(rows), 3)
+        ids = {r['extraction_id'] for r in rows}
+        self.assertEqual(ids, {out['extraction_id']})
+        positions = [r['doc_position'] for r in rows]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual([r['text'][:5] for r in rows], ['First', 'Secon', 'Third'])
+        self.assertEqual(rows[0]['doc_position'], 1)
+
+    def test_reextract_supersedes_and_latest_extraction_is_current_report(self):
+        run_ec('extract', '--report', self.report_path, '--dir', self.tmpdir)
+        # The edit swaps the first two sentences and rewrites the third.
+        with open(self.report_path, 'w') as f:
+            f.write(self.REPORT_V2)
+        out2 = run_ec('extract', '--report', self.report_path, '--dir', self.tmpdir)
+        self.assertGreater(out2['claims_added'], 0)   # the rewritten sentence
+        self.assertGreater(out2['claims_skipped'], 0)  # the two kept sentences
+
+        claims_path = os.path.join(self.tmpdir, 'claims.jsonl')
+        all_rows, latest = self._latest(claims_path)
+        # Superseded rows stay in the append-only file.
+        self.assertGreater(len(all_rows), len(latest))
+        self.assertTrue(any('exists only in the first version' in r['text'] for r in all_rows))
+        # The latest extraction is exactly the current report, in the
+        # current document order — the old third sentence is gone and
+        # the swapped order is reflected.
+        self.assertEqual([r['text'][:5] for r in latest], ['Secon', 'First', 'A rew'])
+
+    def test_list_dedupes_superseded_rows(self):
+        run_ec('extract', '--report', self.report_path, '--dir', self.tmpdir)
+        with open(self.report_path, 'w') as f:
+            f.write(self.REPORT_V2)
+        second = run_ec('extract', '--report', self.report_path, '--dir', self.tmpdir)
+        out = run_ec('list', '--dir', self.tmpdir)
+        # 3 original ids + 1 for the rewritten sentence; no id twice.
+        self.assertEqual(out['count'], 4)
+        ids = [r['claim_id'] for r in out['claims']]
+        self.assertEqual(len(ids), len(set(ids)))
+        # Keep-last: every claim in the current report is listed with its
+        # superseding row from the second extraction, not the first row.
+        current = [r for r in out['claims']
+                   if r.get('extraction_id') == second['extraction_id']]
+        self.assertEqual(len(current), second['claims_added'] + second['claims_skipped'])
+
+
 if __name__ == '__main__':
     unittest.main()

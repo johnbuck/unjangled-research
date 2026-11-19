@@ -4,6 +4,10 @@ Claim-Support Verification — checks whether evidence supports claims.
 
 CLI subcommands:
   verify       Check all claims against evidence, update support_status
+  link         Resolve citation numbers to sources through the run's
+               display-number map (display_numbers.json, written by
+               citation_manager.py assign-display-numbers), then link
+               claims to evidence rows
   report       Generate a support verification summary
 
 Version 1 is deterministic and cheap: entity, number, date, and
@@ -19,7 +23,6 @@ import os
 import re
 import sys
 from collections import Counter
-from datetime import datetime, timezone
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +45,28 @@ def write_jsonl(path: str, rows: list[dict]) -> None:
     with open(path, 'w') as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + '\n')
+
+
+def load_display_map(run_dir: str) -> "dict[int, str] | None":
+    """Read the run's display-number map -> {display_number: source_id}.
+
+    The map is display_numbers.json in the run dir, written by
+    citation_manager.py assign-display-numbers (provisional
+    registration-order map or cited-order map) and renumber-report.
+    Returns None when no map has been saved.
+    """
+    path = os.path.join(run_dir, 'display_numbers.json')
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        sid_to_num = json.load(f)
+    num_to_sid = {}
+    for sid, num in sid_to_num.items():
+        try:
+            num_to_sid[int(num)] = sid
+        except (TypeError, ValueError):
+            continue
+    return num_to_sid
 
 
 # ---------------------------------------------------------------------------
@@ -173,8 +198,9 @@ def compute_support_score(claim_text: str, evidence_quotes: list[str]) -> tuple[
 
 
 def cmd_link(args: argparse.Namespace) -> None:
-    """Link claims to their evidence: resolve citation numbers to source IDs,
-    then find best-matching evidence rows by token overlap."""
+    """Link claims to their evidence: resolve citation numbers to source IDs
+    through the run's display-number map, then find best-matching evidence
+    rows by token overlap."""
     claims_path = os.path.join(args.dir, 'claims.jsonl')
     sources_path = os.path.join(args.dir, 'sources.jsonl')
     evidence_path = os.path.join(args.dir, 'evidence.jsonl')
@@ -183,12 +209,26 @@ def cmd_link(args: argparse.Namespace) -> None:
     sources = read_jsonl(sources_path)
     evidence = read_jsonl(evidence_path)
 
-    # Build display-number -> source_id mapping (registration order = display number)
-    num_to_sid = {}
-    for i, src in enumerate(sources, 1):
-        sid = src.get('source_id')
-        if sid and sid not in [v for v in num_to_sid.values()]:
-            num_to_sid[i] = sid
+    # Resolve [N] through the run's actual display-number map, not
+    # registration order (E1-R8/F13). Fall back to registration order —
+    # the documented provisional numbering — only when no map was saved,
+    # and say so on stderr.
+    num_to_sid = load_display_map(args.dir)
+    map_source = 'display_numbers.json'
+    if num_to_sid is None:
+        num_to_sid = {}
+        for src in sources:
+            sid = src.get('source_id')
+            if sid and sid not in num_to_sid.values():
+                num_to_sid[len(num_to_sid) + 1] = sid
+        map_source = 'registration order'
+        print(
+            'warning: display_numbers.json not found; resolving citation '
+            'numbers by registration order — run '
+            '"citation_manager.py assign-display-numbers --dir <run>" to '
+            'save the run map',
+            file=sys.stderr,
+        )
 
     # Index evidence by source_id
     ev_by_source = {}
@@ -198,13 +238,19 @@ def cmd_link(args: argparse.Namespace) -> None:
             ev_by_source.setdefault(sid, []).append(ev)
 
     linked = 0
+    unresolved = []
     updated = []
     for claim in claims:
         cite_nums = claim.get('_citation_numbers', [])
 
         # Step 1: resolve citation numbers to source IDs
         if cite_nums and not claim.get('cited_source_ids'):
-            sids = [num_to_sid[n] for n in cite_nums if n in num_to_sid]
+            sids = []
+            for n in cite_nums:
+                if n in num_to_sid:
+                    sids.append(num_to_sid[n])
+                else:
+                    unresolved.append(n)
             claim['cited_source_ids'] = sids
 
         # Step 2: find best-matching evidence rows
@@ -238,6 +284,8 @@ def cmd_link(args: argparse.Namespace) -> None:
         'total_claims': len(updated),
         'linked': linked,
         'unlinked': len(updated) - linked,
+        'display_map': map_source,
+        'unresolved_citation_numbers': sorted(set(unresolved)),
     }))
 
 def cmd_verify(args: argparse.Namespace) -> None:
@@ -259,14 +307,13 @@ def cmd_verify(args: argparse.Namespace) -> None:
         ev_by_source.setdefault(sid, []).append(ev.get('quote', ''))
         ev_by_id[eid] = ev
 
-    # Deduplicate claims
-    seen = set()
-    unique_claims = []
+    # Deduplicate claims, keeping the LAST row per claim_id: extract
+    # re-stamps the current report on every run, so later rows supersede
+    # older ones (latest extraction wins).
+    by_id: dict = {}
     for c in claims:
-        cid = c.get('claim_id')
-        if cid not in seen:
-            seen.add(cid)
-            unique_claims.append(c)
+        by_id[c.get('claim_id')] = c
+    unique_claims = list(by_id.values())
 
     verified = 0
     updated_claims = []
@@ -341,14 +388,11 @@ def cmd_report(args: argparse.Namespace) -> None:
     claims_path = os.path.join(args.dir, 'claims.jsonl')
     claims = read_jsonl(claims_path)
 
-    # Deduplicate
-    seen = set()
-    unique = []
+    # Deduplicate, latest row per claim_id (superseding rows win)
+    by_id: dict = {}
     for c in claims:
-        cid = c.get('claim_id')
-        if cid not in seen:
-            seen.add(cid)
-            unique.append(c)
+        by_id[c.get('claim_id')] = c
+    unique = list(by_id.values())
 
     lines = ['# Claim Support Verification Report', '']
 

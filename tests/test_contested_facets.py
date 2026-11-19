@@ -12,6 +12,13 @@ def run(report, manifest=None):
     r = subprocess.run(cmd, capture_output=True, text=True)
     return r.returncode == 0
 
+def run_out(report, manifest=None):
+    cmd = [sys.executable, SCRIPT, "--report", V(report), "--format", "comprehensive-report"]
+    if manifest:
+        cmd += ["--manifest", V(manifest)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    return r.returncode, r.stdout
+
 def test_facets_without_section_fails():
     assert not run("report_no_perspectives.md", "manifest_with_facets.json"), \
         "listed facets + no Perspectives section must FAIL"
@@ -19,6 +26,16 @@ def test_facets_without_section_fails():
 def test_facets_with_section_passes():
     assert run("report_with_perspectives.md", "manifest_with_facets.json"), \
         "listed facets + Perspectives section must PASS"
+
+def test_uncovered_facet_fails_naming_it():
+    code, out = run_out("report_with_perspectives.md", "manifest_facet_uncovered.json")
+    assert code == 1, out
+    assert "does not cover" in out and "replication across cohorts" in out, \
+        "the uncovered facet must be named"
+
+def test_body_phrase_covers_facet():
+    assert run("report_body_phrase.md", "manifest_with_facets.json"), \
+        "a facet named verbatim in the section prose covers the facet"
 
 def test_empty_facets_pass_without_section():
     assert run("report_no_perspectives.md", "manifest_empty.json"), \
@@ -31,6 +48,8 @@ def test_no_manifest_skips_gate():
 if __name__ == "__main__":
     test_facets_without_section_fails()
     test_facets_with_section_passes()
+    test_uncovered_facet_fails_naming_it()
+    test_body_phrase_covers_facet()
     test_empty_facets_pass_without_section()
     test_no_manifest_skips_gate()
-    print("all 4 contested-facet tests ran and passed")
+    print("all 6 contested-facet tests ran and passed")

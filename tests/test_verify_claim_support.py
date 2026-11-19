@@ -32,6 +32,70 @@ def write_jsonl(path: str, rows: list[dict]):
             f.write(json.dumps(row) + '\n')
 
 
+class TestLink(unittest.TestCase):
+    """link resolves [N] through the run's display-number map (E1-R8/F13),
+    not registration order."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        write_jsonl(os.path.join(self.tmpdir, 'sources.jsonl'), [
+            {'source_id': 'src_first_reg', 'title': 'Registered first'},
+            {'source_id': 'src_second_reg', 'title': 'Registered second'},
+        ])
+        write_jsonl(os.path.join(self.tmpdir, 'evidence.jsonl'), [])
+        write_jsonl(os.path.join(self.tmpdir, 'claims.jsonl'), [
+            {
+                'claim_id': 'clm_link_001',
+                'section_id': 'finding_1',
+                'text': 'A claim whose citation number is decided by the saved map.',
+                'claim_type': 'factual',
+                'cited_source_ids': [],
+                'evidence_ids': [],
+                'support_status': 'unverified',
+                '_citation_numbers': [1],
+            },
+            {
+                'claim_id': 'clm_link_002',
+                'section_id': 'finding_1',
+                'text': 'Another claim citing a number no source owns.',
+                'claim_type': 'factual',
+                'cited_source_ids': [],
+                'evidence_ids': [],
+                'support_status': 'unverified',
+                '_citation_numbers': [7],
+            },
+        ])
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_link_uses_saved_display_map(self):
+        # The map swaps the registration order: display 1 is the SECOND
+        # registered source. link must resolve [1] through it.
+        with open(os.path.join(self.tmpdir, 'display_numbers.json'), 'w') as f:
+            json.dump({'src_second_reg': 1, 'src_first_reg': 2}, f)
+        out = run_vcs('link', '--dir', self.tmpdir)
+        self.assertEqual(out['display_map'], 'display_numbers.json')
+        claims = {r['claim_id']: r for r in
+                  [json.loads(l) for l in open(os.path.join(self.tmpdir, 'claims.jsonl')) if l.strip()]}
+        self.assertEqual(claims['clm_link_001']['cited_source_ids'], ['src_second_reg'])
+        self.assertEqual(claims['clm_link_002']['cited_source_ids'], [])
+        self.assertEqual(out['unresolved_citation_numbers'], [7])
+
+    def test_link_falls_back_to_registration_order_with_warning(self):
+        result = subprocess.run(
+            [sys.executable, SCRIPT, 'link', '--dir', self.tmpdir],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('display_numbers.json not found', result.stderr)
+        out = json.loads(result.stdout)
+        self.assertEqual(out['display_map'], 'registration order')
+        claims = {r['claim_id']: r for r in
+                  [json.loads(l) for l in open(os.path.join(self.tmpdir, 'claims.jsonl')) if l.strip()]}
+        self.assertEqual(claims['clm_link_001']['cited_source_ids'], ['src_first_reg'])
+
+
 class TestVerifySupported(unittest.TestCase):
     """Claims with matching evidence should be supported."""
 

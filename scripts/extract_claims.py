@@ -11,6 +11,13 @@ CLI subcommands:
 Claim identity:
   claim_id = sha256(section_id + normalized_text)[:16]
 
+Extraction stamping:
+  Every row carries the extraction_id of the run that appended it and a
+  1-based doc_position counting sentences in document order. Re-running
+  extract supersedes unchanged sentences with fresh rows, so the rows of
+  the latest extraction_id are exactly the current report in document
+  order (citation-order numbering reads them this way).
+
 Claim types (per GPT Pro's refinement of Codex's proposal):
   - factual: hard-fails on lack of support
   - synthesis: needs traceability, softer threshold
@@ -25,6 +32,13 @@ import os
 import re
 import sys
 from datetime import datetime, timezone
+
+# Shared bibliography rule (E1-R1): this script must not keep its own
+# split or citation regex.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+from bibliography import extract_citations, reader_facing_text  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +80,19 @@ def read_jsonl(path: str) -> list[dict]:
     return rows
 
 
+def dedupe_claims(rows: list[dict]) -> list[dict]:
+    """Deduplicate by claim_id, keeping the LAST row per id.
+
+    claims.jsonl is append-only and extract re-stamps every sentence of the
+    current report on each run, so a claim_id can carry superseding rows.
+    The last row is the latest extraction's and wins.
+    """
+    by_id: dict = {}
+    for row in rows:
+        by_id[row.get('claim_id')] = row
+    return list(by_id.values())
+
+
 # ---------------------------------------------------------------------------
 # Report parsing helpers
 # ---------------------------------------------------------------------------
@@ -82,8 +109,10 @@ SECTION_PATTERNS = [
     (re.compile(r'^##\s+(.+)', re.I), lambda m: re.sub(r'\W+', '_', m.group(1).strip().lower())[:30]),
 ]
 
-# Citation pattern [N] or [N, M]
-CITATION_RE = re.compile(r'\[(\d+(?:,\s*\d+)*)\]')
+# Fenced code block lines, matching scripts/bibliography.py: a fence
+# opens on ``` or ~~~ (info string allowed) and closes on a bare fence.
+FENCE_OPEN_RE = re.compile(r'^(?:```|~~~)')
+FENCE_CLOSE_RE = re.compile(r'^(?:```|~~~)[ \t]*\r?$')
 
 # Sentence splitting (basic but handles abbreviations)
 SENTENCE_RE = re.compile(r'(?<=[.!?])\s+(?=[A-Z])')
@@ -120,8 +149,20 @@ def parse_sections(markdown: str) -> list[tuple[str, str]]:
     sections = []
     current_id = 'preamble'
     current_lines = []
+    in_fence = False
 
     for line in lines:
+        # A '## ' line inside a fenced code block is an example, not a
+        # section heading (same rule as scripts/bibliography.py).
+        if in_fence:
+            if FENCE_CLOSE_RE.match(line):
+                in_fence = False
+            current_lines.append(line)
+            continue
+        if FENCE_OPEN_RE.match(line):
+            in_fence = True
+            current_lines.append(line)
+            continue
         matched = False
         for pattern, id_or_fn in SECTION_PATTERNS:
             m = pattern.match(line)
@@ -148,17 +189,9 @@ def extract_sentences(text: str) -> list[str]:
     text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # bold
     text = re.sub(r'\*([^*]+)\*', r'\1', text)  # italic
 
-    # Strip the bibliography section entirely — its entries are citations, not claims
-    bib_split = re.split(r'## (?:Bibliography|Sources)\b', text, maxsplit=1)
-    if len(bib_split) > 1:
-        after_bib = bib_split[1]
-        next_section = after_bib.find('\n## ')
-        if next_section > 0:
-            # Bibliography is not last: keep pre-bib + post-bib sections
-            text = bib_split[0] + after_bib[next_section:]
-        else:
-            # Bibliography is last: keep only pre-bib content
-            text = bib_split[0]
+    # Strip the bibliography section entirely — its entries are citations,
+    # not claims (shared rule, E1-R1; post-bibliography appendices stay)
+    text = reader_facing_text(text)
 
     sentences = SENTENCE_RE.split(text)
     result = []
@@ -178,7 +211,15 @@ def extract_sentences(text: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def cmd_extract(args: argparse.Namespace) -> None:
-    """Extract atomic claims from a markdown report."""
+    """Extract atomic claims from a markdown report.
+
+    Every appended row carries the run's ``extraction_id`` and a 1-based
+    ``doc_position`` counting sentences in document order. Rows for
+    already-known claim_ids are appended again as superseding rows (fresh
+    extraction_id and doc_position): claims.jsonl stays append-only, and
+    the latest extraction is exactly the current report, so consumers
+    (cited-order numbering) never mix rows from older extractions.
+    """
     report_path = args.report
     if not os.path.exists(report_path):
         print(json.dumps({'error': f'Report not found: {report_path}'}), file=sys.stderr)
@@ -190,25 +231,27 @@ def cmd_extract(args: argparse.Namespace) -> None:
     claims_path = os.path.join(args.dir, 'claims.jsonl')
     existing_ids = {r['claim_id'] for r in read_jsonl(claims_path)}
 
-    sections = parse_sections(markdown)
+    # Drop the bibliography section by the shared rule (E1-R1) before
+    # splitting into sections: its entries are citations, not claims, and
+    # post-bibliography appendices stay. parse_sections consumes headings,
+    # so the section-level reader_facing_text call cannot see this one.
+    sections = parse_sections(reader_facing_text(markdown))
+    extraction_id = datetime.now(timezone.utc).isoformat()
     added = 0
     skipped = 0
+    doc_position = 0
 
     for section_id, content in sections:
         if section_id == 'preamble':
             continue
         sentences = extract_sentences(content)
         for sentence in sentences:
+            doc_position += 1
             claim_id = compute_claim_id(section_id, sentence)
-            if claim_id in existing_ids:
-                skipped += 1
-                continue
+            is_new = claim_id not in existing_ids
 
-            # Extract citation numbers from sentence
-            citation_nums = []
-            for m in CITATION_RE.finditer(sentence):
-                nums = [int(n.strip()) for n in m.group(1).split(',')]
-                citation_nums.extend(nums)
+            # Extract citation numbers from sentence (shared rule, E1-R1)
+            citation_nums = extract_citations(sentence)
 
             claim = {
                 'claim_id': claim_id,
@@ -219,17 +262,26 @@ def cmd_extract(args: argparse.Namespace) -> None:
                 'evidence_ids': [],  # Populated by verify_claim_support
                 'support_status': 'unverified',
                 'extracted_at': datetime.now(timezone.utc).isoformat(),
+                'extraction_id': extraction_id,
+                'doc_position': doc_position,
                 '_citation_numbers': citation_nums,  # Temporary, for linking
             }
+            # Append even for known claim_ids: the superseding row carries
+            # this extraction's stamp and document position. link/verify
+            # re-fill cited_source_ids and evidence_ids on the fresh row.
             append_jsonl(claims_path, claim)
-            existing_ids.add(claim_id)
-            added += 1
+            if is_new:
+                existing_ids.add(claim_id)
+                added += 1
+            else:
+                skipped += 1
 
     print(json.dumps({
         'status': 'ok',
         'claims_added': added,
         'claims_skipped': skipped,
         'total_claims': len(existing_ids),
+        'extraction_id': extraction_id,
     }))
 
 
@@ -282,14 +334,8 @@ def cmd_list(args: argparse.Namespace) -> None:
     if args.status:
         rows = [r for r in rows if r.get('support_status') == args.status]
 
-    # Deduplicate
-    seen = set()
-    unique = []
-    for r in rows:
-        cid = r.get('claim_id')
-        if cid not in seen:
-            seen.add(cid)
-            unique.append(r)
+    # Deduplicate, latest row per claim_id (superseding rows win)
+    unique = dedupe_claims(rows)
 
     print(json.dumps({'count': len(unique), 'claims': unique}, indent=2, ensure_ascii=False))
 
@@ -299,14 +345,8 @@ def cmd_stats(args: argparse.Namespace) -> None:
     claims_path = os.path.join(args.dir, 'claims.jsonl')
     rows = read_jsonl(claims_path)
 
-    # Deduplicate
-    seen = set()
-    unique = []
-    for r in rows:
-        cid = r.get('claim_id')
-        if cid not in seen:
-            seen.add(cid)
-            unique.append(r)
+    # Deduplicate, latest row per claim_id (superseding rows win)
+    unique = dedupe_claims(rows)
 
     by_type = {}
     by_status = {}

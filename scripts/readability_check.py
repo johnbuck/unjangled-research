@@ -5,13 +5,30 @@ Measures citation-chain density and pipeline-internals leakage in a research
 report body (bibliography excluded). Thresholds calibrated 2026-10-06 against
 two blind-labelled task-73 artifacts (fork judged 72, upstream 07 judged 83).
 
-Gates:
-  internals  == 0                    hard fail
-  mean refs/sentence <= 1.6          hard fail
-  pct sentences 3+ refs <= 20%       warn above 20, fail above 25
-  max chain                          advisory only (non-discriminating)
+Windows: citation density is measured on the body before the bibliography;
+internals are scanned over the whole document minus the bibliography section
+(post-bibliography appendices included). List items (a '-', '*' or
+'+' bullet, or a '1.' / '1)' numbered item, with up to three leading
+spaces, plus the continuation lines that wrap it) are each their own
+segment, so an unpunctuated list item never merges with the next item;
+runs of other lines are split on sentence enders as before. The textstat
+metrics see the same boundaries: each unpunctuated list item is
+terminated with a period at its end before textstat sees it (terminal
+punctuation '.', '!' '?' is left untouched), so every list item counts
+as its own sentence for sentence length, FK grade and the other
+standard formulas. A hard-wrapped item is terminated once, at its last
+line, so wrapping a long item never splits it into short sentences.
 
-Exit codes: 0 pass, 1 fail, 2 warn.
+Gates:
+  no sentence over 30 characters      hard fail ("no measurable prose")
+  pipeline-internals hits             warn > 2, fail > 6
+  mean refs/sentence                  fail > 1.6
+  sentences with 3+ refs              warn > 20%, fail > 25%
+  mean sentence length (words)        warn > 22, fail > 27
+  Flesch-Kincaid grade                warn > 16.5, fail > 18.0
+  max citation chain >= 12            advisory only (non-discriminating)
+
+Exit codes: 0 pass, 2 warnings only, 1 fail (3: textstat unavailable).
 """
 
 import argparse
@@ -35,6 +52,27 @@ except ImportError as e:
     )
     sys.exit(3)
 
+# Shared bibliography rule (E1-R1): this script must not keep its own
+# split or citation regex. Imported after the scripts dir is guaranteed
+# on sys.path (it is sys.path[0] when run as a script; tests insert it).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+from bibliography import (  # noqa: E402,F401
+    body_before_bibliography,  # re-exported: readability_window_check imports it from here
+    count_refs,
+    reader_facing_text,
+)
+
+__all__ = [
+    "body_before_bibliography",
+    "count_refs",
+    "list_blocks",
+    "reader_facing_text",
+    "terminate_segment",
+    "terminated_body",
+]
+
 INTERNALS_RE = re.compile(
     r"append-only|run manifest|evidence rows|cryptographic identit"
     r"|deep mode|fallback chain|evidence store|the run executed"
@@ -42,13 +80,19 @@ INTERNALS_RE = re.compile(
     r"|\b[0-9a-f]{12,}\b",
     re.IGNORECASE,
 )
-REF_RE = re.compile(r"\[(\d+(?:,\s*\d+)*)\]")
-
-
-def count_refs(sentence: str) -> int:
-    """Count refs in a sentence, handling both [1] [2] and [1, 2] styles."""
-    return sum(len(g.split(",")) for g in REF_RE.findall(sentence))
 SENT_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+# A list-item line (a '-', '*' or '+' bullet, or a CommonMark ordered
+# marker of 1-9 digits plus '.' or ')', up to three leading spaces):
+# measured as its own segment so unpunctuated list items never merge into
+# one giant sentence (F10). Numbered items are included because '1)'
+# items have no '.' for SENT_SPLIT_RE to split on, and '1.' items only
+# split by accident of the next item's marker. The negative lookahead
+# excludes spaced thematic breaks ('- - -', '* * *'): the rest of the line
+# is markers and whitespace only, which is a break, not a bullet; spaces
+# only before the marker, so a tab-indented line stays prose (CommonMark
+# reads it as indented code).
+BULLET_LINE_RE = re.compile(r"^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+(?![-*+ \t]*$)")
 
 # Thresholds. Internals recalibrated 2026-10-06 after an instrument-
 # window defect was found (post-bibliography appendices were unmeasured;
@@ -72,51 +116,109 @@ SENTLEN_FAIL = 27.0
 FK_WARN = 16.5
 FK_FAIL = 18.0
 
+# body_before_bibliography / reader_facing_text / count_refs come from
+# scripts/bibliography.py (E1-R1 shared rule) and are re-exported by the
+# import at the top of this file; readability_window_check.py imports
+# them from here. The density window is the window the thresholds were
+# calibrated on (fork 2.06, 07 1.04).
 
-def body_before_bibliography(text: str) -> str:
-    """Argument prose: everything before the '## Bibliography' heading.
 
-    Citation-density metrics are computed on this window only — it is the
-    window the thresholds were calibrated on (fork 2.06, 07 1.04).
+def list_blocks(lines: "list[str]") -> "list[tuple[bool, list[str]]]":
+    """Lines grouped into (is_list_item, lines) blocks, in order.
+
+    A list item is a BULLET_LINE_RE line plus every continuation line
+    after it: each following non-blank line that is not itself a list
+    item, indented or lazy, as CommonMark continues an item's paragraph.
+    The item ends at a blank line or the next list item. Every other
+    maximal run of lines (blank lines included) is one prose block.
+    Concatenating the blocks' lines gives back the input lines exactly.
     """
-    return re.split(r"## (?:Bibliography|Sources)\b", text, maxsplit=1)[0]
+    blocks: "list[tuple[bool, list[str]]]" = []
+    for line in lines:
+        if BULLET_LINE_RE.match(line):
+            blocks.append((True, [line]))
+        elif blocks and blocks[-1][0] and line.strip():
+            blocks[-1][1].append(line)  # continuation of the open item
+        elif blocks and not blocks[-1][0]:
+            blocks[-1][1].append(line)
+        else:
+            blocks.append((False, [line]))
+    return blocks
 
 
-def reader_facing_text(text: str) -> str:
-    """The whole document minus the bibliography section's citation entries.
+def measured_segments(body: str) -> "list[str]":
+    """Segments over 30 characters in the density window.
 
-    Post-bibliography appendices are reader-facing and stay IN scope for the
-    internals gate — moving narration past the bibliography heading must not
-    evade the gate.
+    List items (bullets and numbered items, continuation lines included)
+    are each their own chunk; runs of other lines keep the classic
+    behaviour (SENT_SPLIT_RE over the whole run, so prose wrapping across
+    lines still joins into one sentence).
     """
-    parts = re.split(r"## (?:Bibliography|Sources)\b", text, maxsplit=1)
-    if len(parts) == 1:
-        return text
-    after = parts[1]
-    nxt = after.find("\n## ")
-    if nxt == -1:
-        return parts[0]
-    return parts[0] + after[nxt:]
+    chunks = ["\n".join(ls) for _, ls in list_blocks(body.splitlines())]
+    segments = [s for chunk in chunks for s in SENT_SPLIT_RE.split(chunk)]
+    return [s for s in segments if len(s.strip()) > 30]
+
+
+def terminate_segment(segment: str) -> str:
+    """A copy of segment that ends in terminal punctuation.
+
+    Unchanged (whitespace included) when the segment already ends in
+    '.', '!' or '?' — the SENT_SPLIT_RE enders; otherwise the trailing
+    whitespace is stripped and a period is appended, so textstat —
+    which splits sentences on punctuation, not on list markers —
+    counts the segment as its own sentence.
+    """
+    s = segment.rstrip()
+    return segment if s[-1:] in ".!?" else s + "."
+
+
+def terminated_body(body: str) -> str:
+    """Body with every unpunctuated list item terminated by a period.
+
+    Only list items (list_blocks) are touched, and each is terminated
+    once, at the end of its last continuation line, so a hard-wrapped
+    item stays one sentence. A body without unpunctuated list items
+    round-trips byte-identically and every item already ending in
+    terminal punctuation is unchanged.
+    """
+    out = []
+    for is_item, ls in list_blocks(body.split("\n")):
+        out.append(terminate_segment("\n".join(ls)) if is_item else "\n".join(ls))
+    return "\n".join(out)
 
 
 def measure(text: str) -> dict:
     body = body_before_bibliography(text)  # calibrated citation-density window
     reader_facing = reader_facing_text(text)  # whole doc minus bib entries
-    sentences = [s for s in SENT_SPLIT_RE.split(body) if len(s.strip()) > 30]
+    internals = INTERNALS_RE.findall(reader_facing)
+    sentences = measured_segments(body)
     if not sentences:
+        # No measurable prose: the textstat metrics are zeroed (textstat
+        # on a few-word body is noise) but the dict stays complete, so
+        # evaluate() and the summary line never KeyError; internals stay
+        # measured so a short or bullet-only report cannot evade the
+        # leak gate by having nothing measurable.
         return {
             "sentences": 0,
             "refs": 0,
             "mean_refs": 0.0,
             "pct_3plus": 0.0,
             "max_chain": 0,
-            "internals_hits": 0,
-            "internals_samples": [],
+            "internals_hits": len(internals),
+            "internals_samples": [s.strip()[:60] for s in internals[:5]],
+            "flesch_ease": 0.0,
+            "fk_grade": 0.0,
+            "gunning_fog": 0.0,
+            "smog": 0.0,
+            "mean_sent_len": 0.0,
         }
     chain_counts = [count_refs(s) for s in sentences]
     n3 = sum(1 for n in chain_counts if n >= 3)
     total_refs = sum(chain_counts)
-    internals = INTERNALS_RE.findall(reader_facing)
+    # Textstat reads the terminated body: every measured segment counts
+    # as its own sentence (an unpunctuated list item would otherwise
+    # merge with the next line into one giant textstat "sentence").
+    prose = terminated_body(body)
     return {
         "sentences": len(sentences),
         "refs": total_refs,
@@ -125,18 +227,24 @@ def measure(text: str) -> dict:
         "max_chain": max(chain_counts),
         "internals_hits": len(internals),
         "internals_samples": [s.strip()[:60] for s in internals[:5]],
-        "flesch_ease": round(textstat.flesch_reading_ease(body), 1),
-        "fk_grade": round(textstat.flesch_kincaid_grade(body), 1),
-        "gunning_fog": round(textstat.gunning_fog(body), 1),
-        "smog": round(textstat.smog_index(body), 1),
+        "flesch_ease": round(textstat.flesch_reading_ease(prose), 1),
+        "fk_grade": round(textstat.flesch_kincaid_grade(prose), 1),
+        "gunning_fog": round(textstat.gunning_fog(prose), 1),
+        "smog": round(textstat.smog_index(prose), 1),
         "mean_sent_len": round(
-            textstat.lexicon_count(body) / max(1, textstat.sentence_count(body)), 1
+            textstat.lexicon_count(prose) / max(1, textstat.sentence_count(prose)), 1
         ),
     }
 
 
 def evaluate(m: dict) -> tuple[list, list, list]:
     fails, warns, advisories = [], [], []
+    if m["sentences"] == 0:
+        fails.append(
+            "no measurable prose: the body before the bibliography has no "
+            "sentence over 30 characters — the report is too short for the "
+            "readability gates to measure"
+        )
     if m["internals_hits"] > INTERNALS_FAIL:
         fails.append(
             f"pipeline-internals leakage: {m['internals_hits']} hits "

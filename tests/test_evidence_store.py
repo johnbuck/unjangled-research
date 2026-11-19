@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke tests for evidence_store.py CLI."""
+"""Tests for evidence_store.py CLI, including F17 input validation."""
 
 import json
 import os
@@ -11,16 +11,38 @@ import unittest
 
 SCRIPT = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'evidence_store.py')
 
+VALID_TYPES = ('direct_quote', 'paraphrase', 'data_point', 'figure_reference', 'methodology')
 
-def run_es(*args: str) -> dict | list:
-    """Run evidence_store.py with args, return parsed JSON from stdout."""
-    result = subprocess.run(
+
+def run_es_raw(*args: str) -> subprocess.CompletedProcess:
+    """Run evidence_store.py with args, return the raw completed process."""
+    return subprocess.run(
         [sys.executable, SCRIPT, *args],
         capture_output=True, text=True,
     )
+
+
+def run_es(*args: str) -> dict | list:
+    """Run evidence_store.py with args, return parsed JSON from stdout."""
+    result = run_es_raw(*args)
     if result.returncode != 0:
         raise RuntimeError(f'Exit {result.returncode}: {result.stderr}')
     return json.loads(result.stdout)
+
+
+def register_source(run_dir: str, source_id: str) -> None:
+    """Append a source row (source.schema.json shape) to run_dir/sources.jsonl."""
+    row = {
+        'source_id': source_id,
+        'canonical_locator': f'test://{source_id}',
+        'raw_url': f'https://example.com/{source_id}',
+        'title': f'Test source {source_id}',
+        'source_type': 'web',
+        'metadata_status': 'unverified',
+        'registered_at': '2026-11-18T00:00:00+00:00',
+    }
+    with open(os.path.join(run_dir, 'sources.jsonl'), 'a') as f:
+        f.write(json.dumps(row) + '\n')
 
 
 class TestInit(unittest.TestCase):
@@ -37,6 +59,9 @@ class TestAddEvidence(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         run_es('init', '--dir', self.tmpdir)
+        register_source(self.tmpdir, 'abcdef0123456789')
+        register_source(self.tmpdir, 'aaaaaaaaaaaaaaaa')
+        register_source(self.tmpdir, 'bbbbbbbbbbbbbbbb')
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -92,10 +117,120 @@ class TestAddEvidence(unittest.TestCase):
         self.assertEqual(out2['status'], 'added')
 
 
+class TestAddValidation(unittest.TestCase):
+    """F17: unknown evidence_type and unregistered source_id are rejected."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        run_es('init', '--dir', self.tmpdir)
+        register_source(self.tmpdir, 'abcdef0123456789')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def read_rows(self) -> list[dict]:
+        with open(os.path.join(self.tmpdir, 'evidence.jsonl')) as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    def test_unknown_evidence_type_rejected(self):
+        ev = json.dumps({
+            'source_id': 'abcdef0123456789',
+            'quote': 'Some quote.',
+            'evidence_type': 'paraphrse',
+        })
+        result = run_es_raw('add', '--json', ev, '--dir', self.tmpdir)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('paraphrse', result.stderr)
+        for valid in VALID_TYPES:
+            self.assertIn(valid, result.stderr)
+        self.assertEqual(self.read_rows(), [])
+
+    def test_unregistered_source_rejected(self):
+        ev = json.dumps({
+            'source_id': 'cccccccccccccccc',
+            'quote': 'Some quote.',
+            'evidence_type': 'direct_quote',
+        })
+        result = run_es_raw('add', '--json', ev, '--dir', self.tmpdir)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('cccccccccccccccc', result.stderr)
+        self.assertIn('sources.jsonl', result.stderr)
+        self.assertEqual(self.read_rows(), [])
+
+    def test_missing_sources_file_rejects(self):
+        with tempfile.TemporaryDirectory() as d:
+            run_es('init', '--dir', d)
+            ev = json.dumps({
+                'source_id': 'abcdef0123456789',
+                'quote': 'Some quote.',
+                'evidence_type': 'direct_quote',
+            })
+            result = run_es_raw('add', '--json', ev, '--dir', d)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('sources.jsonl', result.stderr)
+            with open(os.path.join(d, 'evidence.jsonl')) as f:
+                self.assertEqual(f.read(), '')
+
+    def test_valid_add_still_appends(self):
+        ev = json.dumps({
+            'source_id': 'abcdef0123456789',
+            'quote': 'A valid captured paraphrase.',
+            'evidence_type': 'paraphrase',
+        })
+        out = run_es('add', '--json', ev, '--dir', self.tmpdir)
+        self.assertEqual(out['status'], 'added')
+        rows = self.read_rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['evidence_type'], 'paraphrase')
+
+    def test_missing_evidence_type_rejected(self):
+        # A missing type must not default to direct_quote: verify_citations_v2
+        # checks direct_quote rows verbatim against the page (F17).
+        ev = json.dumps({
+            'source_id': 'abcdef0123456789',
+            'quote': 'An untyped capture.',
+        })
+        result = run_es_raw('add', '--json', ev, '--dir', self.tmpdir)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('evidence_type is required', result.stderr)
+        for valid in VALID_TYPES:
+            self.assertIn(valid, result.stderr)
+        self.assertEqual(self.read_rows(), [])
+
+    def test_malformed_sources_file_rejects_cleanly(self):
+        with open(os.path.join(self.tmpdir, 'sources.jsonl'), 'a') as f:
+            f.write('\n   \n{"source_id": "abc')  # blank lines, then a torn row
+        ev = json.dumps({
+            'source_id': 'abcdef0123456789',
+            'quote': 'Some quote.',
+            'evidence_type': 'direct_quote',
+        })
+        result = run_es_raw('add', '--json', ev, '--dir', self.tmpdir)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, '')
+        err = json.loads(result.stderr)
+        self.assertIn('sources.jsonl is malformed', err['error'])
+        self.assertEqual(self.read_rows(), [])
+
+    def test_blank_lines_in_sources_file_are_ignored(self):
+        with open(os.path.join(self.tmpdir, 'sources.jsonl'), 'a') as f:
+            f.write('\n   \n')
+        ev = json.dumps({
+            'source_id': 'abcdef0123456789',
+            'quote': 'Some quote.',
+            'evidence_type': 'direct_quote',
+        })
+        out = run_es('add', '--json', ev, '--dir', self.tmpdir)
+        self.assertEqual(out['status'], 'added')
+        self.assertEqual(len(self.read_rows()), 1)
+
+
 class TestListAndExport(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         run_es('init', '--dir', self.tmpdir)
+        register_source(self.tmpdir, 'src_aaa')
+        register_source(self.tmpdir, 'src_bbb')
         # Add 3 evidence items from 2 sources
         for src, quote in [
             ('src_aaa', 'First quote from source A.'),

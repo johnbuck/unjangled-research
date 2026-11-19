@@ -156,7 +156,7 @@ path = "scripts/source_evaluator.py"
 reason = "academic publisher name (publisher domain, DOI prefix 10.1111) in a source-scoring table"
 date = 2026-11-10
 expires = 2027-11-10
-blob = "cfcbeabb7660580c0be51b4889c7682be13f2ef3"
+blob = "4c136cb7eea4b773458a8decb2042fd2a55ba36b"
 
 [[exempt]]
 rule = "term:T0013"

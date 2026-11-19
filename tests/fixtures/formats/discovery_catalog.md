@@ -52,7 +52,7 @@ A hierarchical note application with strong scripting support. It clears every f
 
 ## Sources Consulted
 
-Enumerated first: the tool-catalog dataset note-taking category and the awesome-selfhosted note-taking section [6] [7]. Verified against GitHub and Repology [1] [5]. Considered and rejected: Tomboy (archived 2020, one line), NV.py (no release since 2015, one line). Excluded as evidence class: G2, AlternativeTo, and affiliate comparison sites, per criteria.
+Enumerated first: the tool-catalog dataset note-taking category and the awesome-selfhosted note-taking section [6] [7]. Verified against GitHub and Repology, including per-distribution packaging [1] [4] [5]. The Joplin row was cross-checked against its awesome-selfhosted-data YAML entry [8]. Considered and rejected: Tomboy (archived 2020, one line), NV.py (no release since 2015, one line). Excluded as evidence class: G2, AlternativeTo, and affiliate comparison sites, per criteria.
 
 ## Bibliography
 [1] GitHub. Joplin repo metrics, retrieved 2026-10-06. https://github.com/laurent22/joplin

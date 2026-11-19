@@ -30,6 +30,12 @@
       "type": ["string", "null"],
       "default": null
     },
+    "published_at": {
+      "type": ["string", "null"],
+      "pattern": "^\\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\\d|3[01])(T([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})?)?)?)?$",
+      "default": null,
+      "description": "Publication date as precise as the source page gives it, in ISO 8601 extended form: YYYY, YYYY-MM, YYYY-MM-DD, or a full date-time (YYYY-MM-DDTHH:MM[:SS[.fff]][Z|+HH:MM]). Never pad an unknown month, day or time; null when the date is unknown."
+    },
     "source_type": {
       "type": "string",
       "enum": ["web", "academic", "documentation", "code", "news", "government", "book"]
