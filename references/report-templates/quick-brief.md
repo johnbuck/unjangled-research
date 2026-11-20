@@ -33,14 +33,15 @@
 [3-4 sentences covering the essentials]
 
 ## Key Points
-- **Point 1**: [Details] ([Source Title](url))
-- **Point 2**: [Details] ([Source Title](url))
-- **Point 3**: [Details] ([Source Title](url))
+- **Point 1**: [Details] [N]
+- **Point 2**: [Details] [N]
+- **Point 3**: [Details] [N]
 
 ## Action Items
 1. [Immediate next step]
 2. [Follow-up action]
 
 ## Bibliography
-[N] Author/Org (Year). Title. url
+[1] Author/Org (Year). "Title". https://example.com/source
+[2] Author/Org (Year). "Title". https://example.com/source
 ```

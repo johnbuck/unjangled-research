@@ -431,6 +431,14 @@ The bibliography slide: numbered entries matching the [N] citations used on earl
 }
 ```
 
+A source `url` must start with `http://` or `https://` — in any letter case
+(`HTTPS://…` is the same link and is accepted). Anything else fails
+validation: `file://`, a UNC path (`\\host\share\…`), `javascript:`,
+`data:`, `ftp:` and scheme-relative `//host` (`ERROR: [deck.json]: slide N
+(sources).sources[i].url: must start with http:// or https:// (got …)`), as
+does an http(s) url carrying control characters. `null` stays valid (the
+optional-link case).
+
 #### `closing`
 
 The final slide: one headline plus numbered next steps. End every deck here, not on a sources slide.
@@ -491,8 +499,23 @@ The final slide: one headline plus numbered next steps. End every deck here, not
 ## Themes
 
 - Default theme: `neutral` (`themes/neutral/theme.json`). Override on any render with `--theme <name|path>` — a name under `themes/` or a path to a theme folder; pass the same value to `check_theme.py`.
-- Adding a theme: copy `themes/neutral/` to `themes/<name>/` and edit `theme.json` (palette, fonts, footer label, motif) — see the "Adding a theme" section of [html-generation.md](./html-generation.md).
+- Adding a theme: copy `themes/neutral/` to `themes/<name>/` and edit `theme.json` (palette, fonts, footer label, motif) — see the "Adding a theme" section of [html-generation.md](./html-generation.md). A theme whose `fonts.css` or `logo` resolves outside its folder (including through a symlink) fails to load, and both renderers exit 1 with one clean `ERROR:` line naming the field.
 - Never edit CSS. All styling is generated from the theme; a fix belongs in `theme.json` or the slide list, followed by a re-render.
+
+---
+
+## What survives rendering
+
+Every authored word a deck renders is escaped — markup in slide text shows as
+visible characters, never as live tags. A markdown link `[text](url)` in a
+report becomes `text (URL)` in slide text and speaker notes (every scheme,
+https included; report sections keep https as live anchors — see
+[html-generation.md](./html-generation.md)). The report bibliography's
+boundary is the exact, case-sensitive `## Bibliography` / `## Sources` heading
+rule, and its non-entry note lines stay in the report's bibliography only —
+decks list sources, never notes. Slide text condenses by design (per-field
+caps), so a URL can fall past a cap on a slide while the same link stays
+visible in the report the deck was built from.
 
 ---
 

@@ -4,12 +4,14 @@ A research skill for Claude Code and other agent harnesses that read
 `SKILL.md` skills. It produces citation-backed reports in a format matched to
 the question, with an evidence store on disk, two independent citation
 verifiers, and a readability gate every report must pass. Deliverables: a
-themed, self-contained HTML report (every research run), a PDF, and slide
-decks — a self-contained animated HTML deck and an editable PowerPoint
-(.pptx) from the same slide list. Decks can be authored from finished
-research, from an existing report, or from the user's own notes or outline;
-see [reference/slide-decks.md](reference/slide-decks.md). All rendered
-output is gated by theme QA.
+themed, self-contained HTML report (every research run), a PDF (when
+WeasyPrint is installed), and slide decks — a self-contained animated HTML
+deck and an editable PowerPoint (.pptx) from the same slide list. Decks can
+be authored from finished research, from an existing report, or from the
+user's own notes or outline; see
+[reference/slide-decks.md](reference/slide-decks.md). All rendered output
+is gated by theme QA, and delivery runs the one documented gate chain in
+[reference/quality-gates.md](reference/quality-gates.md#phase-8-gate-chain).
 
 **This is a fork.** It started as a hard fork of
 [199-biotechnologies/claude-deep-research-skill](https://github.com/199-biotechnologies/claude-deep-research-skill)
@@ -27,11 +29,13 @@ changed.
   catalog) and the matching template in `references/report-templates/`.
   `scripts/validate_report.py` checks the mandatory sections for each format.
 - **Second citation verifier.** `scripts/verify_citations_v2.py` re-fetches
-  every cited source and byte-checks direct quotes, independent of the
-  upstream verifier.
-- **Claim linkage that fails when it should.** `verify_claim_support.py link`
-  ties extracted claims to evidence; the upstream version exited 0 with no
-  claims linked.
+  every registered source and checks each direct quote against the fetched
+  page's visible text, independent of the upstream verifier.
+- **Claim-support verification that fails when it should.**
+  `verify_claim_support.py link` ties extracted claims to evidence through
+  the run's numbering state, and `verify --strict` fails the run while any
+  factual claim is unsupported; the upstream version passed with no claims
+  linked.
 - **Readability gate.** `scripts/readability_check.py` fails reports with
   dense citation chains, long sentences, a high reading grade, or pipeline
   internals leaking into the text. Thresholds were calibrated against

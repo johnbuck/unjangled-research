@@ -15,9 +15,11 @@ ROOT = os.path.join(HERE, "..")
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 from build_render_model import build_model  # noqa: E402
-from slide_plan import CONTENT_SLIDE_CAP, plan_slides  # noqa: E402
+from slide_plan import CONTENT_SLIDE_CAP, html_text, plan_slides  # noqa: E402
 
 FORMATS_DIR = os.path.join(HERE, "fixtures", "formats")
+RENDER_DIR = os.path.join(HERE, "fixtures", "render")
+LINK_FIDELITY_REPORT = os.path.join(RENDER_DIR, "link_fidelity_report.md")
 REPORT_PATHS = sorted(
     os.path.join(FORMATS_DIR, f) for f in os.listdir(FORMATS_DIR) if f.endswith(".md")
 ) + [os.path.join(HERE, "fixtures", "valid_report.md")]
@@ -147,6 +149,43 @@ def _synthetic_model(findings=(), facets=()):
     }
 
 
+def test_html_text_keeps_anchor_urls():
+    """An <a href> in section HTML reads 'text (URL)' in plain deck text:
+    the escaped href unescapes with the surrounding text, a heading still
+    drops out, and an anchor without href falls to the plain tag strip
+    (fails on 164ef39, which dropped an https link's URL)."""
+    html = ('<h2 class="section-title">DroppedHeading</h2>'
+            '<p>See the <a href="https://e.com/p?a=1&amp;b=2">protocol</a> page '
+            'and <a id="x">a bare anchor</a>.</p>')
+    text = html_text(html)
+    assert "protocol (https://e.com/p?a=1&b=2)" in text
+    assert "a bare anchor" in text
+    assert "DroppedHeading" not in text
+    assert "<a" not in text and "href" not in text
+
+
+def test_link_fidelity_plan_keeps_urls():
+    """Every link URL of the link-fidelity fixture is visible somewhere in
+    the plan — titles, bullets, stat labels or notes — as 'text (URL)',
+    never as raw markdown and never as a live non-https link (fails on
+    164ef39)."""
+    specs = plan_slides(_model(LINK_FIDELITY_REPORT))
+    _assert_plain_json(specs, LINK_FIDELITY_REPORT)
+    joined = " | ".join(
+        [s["title"] for s in specs]
+        + [s.get("notes") or "" for s in specs]
+        + [b["text"] for s in specs for b in s.get("bullets") or []]
+        + [st["label"] for s in specs for st in s.get("stats") or []]
+    )
+    for url in ("(https://example.com/protocol)", "(http://example.com/mirror)",
+                "(javascript:alert(1))", "(https://example.com/registry)",
+                "(https://example.com/release)", "(http://example.com/insecure)"):
+        assert url in joined, url
+    assert "](http" not in joined and "](https" not in joined
+    assert "](javascript" not in joined
+    assert "<a " not in joined
+
+
 if __name__ == "__main__":
     test_fixture_plan_shape()
     test_statement_stats_verbatim()
@@ -154,4 +193,6 @@ if __name__ == "__main__":
     test_cap_and_omitted_note()
     test_facet_specs_carry_sides()
     test_facet_without_sides_falls_back_to_bullets()
-    print("all 6 slide-plan tests ran and passed")
+    test_html_text_keeps_anchor_urls()
+    test_link_fidelity_plan_keeps_urls()
+    print("all 8 slide-plan tests ran and passed")

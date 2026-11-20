@@ -3,11 +3,12 @@
 # The remote is public and require_cut is set for it, so the [cut]
 # block below is mandatory: the history has exactly one root.
 #
-# Exemptions cover vendored English word lists, plus two narrow
-# entries at the end: a publisher name in a source-scoring table and
-# a letter run inside embedded font base64. There is one entry per
-# file and term ID that actually hits there, each pinned to the
-# file's current blob so an edited file is re-evaluated.
+# Exemptions cover vendored English word lists, plus four narrow
+# entries at the end: a publisher name in a source-scoring table, a
+# letter run inside embedded font base64, and the same kind of chance
+# match in the font data of two frozen render test fixtures. There is
+# one entry per file and term ID that actually hits there, each pinned
+# to the file's current blob so an edited file is re-evaluated.
 #
 # This file loosens nothing at the public remote until its blob is
 # approved there with "unjangled-push policy approve origin".
@@ -165,3 +166,19 @@ reason = "accidental letter run inside embedded Lato font base64"
 date = 2026-11-10
 expires = 2027-11-10
 blob = "d8c5ffd4f1abb43e74915e45312d4bd567f1ca22"
+
+[[exempt]]
+rule = "term:T0013"
+path = "tests/fixtures/render/fidelity_report_65ea2cd.html"
+reason = "chance match inside base64 font data in a frozen render fixture"
+date = 2026-11-19
+expires = 2027-11-19
+blob = "6c46a1a520018068cff23c871913ebca34412978"
+
+[[exempt]]
+rule = "term:T0013"
+path = "tests/fixtures/render/verify_html_report_65ea2cd.html"
+reason = "chance match inside base64 font data in a frozen render fixture"
+date = 2026-11-19
+expires = 2027-11-19
+blob = "fd09dc991b2ce93ee2c8a9985c61309e71f317ec"

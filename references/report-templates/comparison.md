@@ -61,6 +61,6 @@ Source: [N]
 **Rationale**: [Why this option is best given the context]
 
 ## Bibliography
-- [Source Title](url)
-- [Source Title](url)
+[1] Author/Org (Year). "Title". https://example.com/source
+[2] Author/Org (Year). "Title". https://example.com/source
 ```

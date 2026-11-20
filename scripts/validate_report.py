@@ -591,8 +591,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python validate_report.py --report report.md
-  python validate_report.py -r ~/.claude/research_output/research_report_20251104_153045.md
+  python3 validate_report.py --report <run_dir>/report.md --format quick-brief
+  python3 validate_report.py --report <run_dir>/report.md --manifest <run_dir>/run_manifest.json
         """
     )
 

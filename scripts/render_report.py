@@ -10,6 +10,9 @@ the in-text [N] citations link to; footer from the theme's label template.
     python3 render_report.py --model render_model.json [--theme neutral] --out report.html
     python3 render_report.py --report report.md [--manifest run_manifest.json] \
         [--format comprehensive-report] [--theme neutral] --out report.html
+
+A theme that fails to load (missing keys, an asset path escaping its
+folder) exits 1 with a single `ERROR: <message>` line on stderr.
 """
 import argparse
 import json
@@ -20,6 +23,7 @@ from pathlib import Path
 
 from build_render_model import build_model, _summary_candidates, PERSPECTIVES_RE
 from render_lib import page, page_header, page_footer, esc
+from theme import load_theme
 
 FORMAT_DISPLAY = {
     "comprehensive-report": "Comprehensive Report",
@@ -31,18 +35,17 @@ FORMAT_DISPLAY = {
 FOOTER_SECTION = "Research report"
 TOC_MIN_SECTIONS = 5
 CITATION_RE = re.compile(r"\[(\d{1,3})\]")
-_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
 _DIV_RE = re.compile(r"</?div[^>]*>")
 _HR_PARA_RE = re.compile(r"<p>\s*(?:-{3,}|\*{3,}|_{3,})\s*</p>")
 
 
 def _clean_section_html(html):
     """Make an md_to_html fragment renderable inside its own section wrapper:
-    drop the wrapper divs (fragment boundaries leave them unbalanced),
-    collapse [text](url) markdown links to their text (full URLs live in the
-    bibliography), and drop thematic-break paragraphs."""
+    drop the wrapper divs (fragment boundaries leave them unbalanced) and
+    drop thematic-break paragraphs. Converter-generated anchors, including
+    https prose links, are kept as-is instead of collapsing links to their
+    text (E2-R3)."""
     html = _DIV_RE.sub("", html)
-    html = _MD_LINK_RE.sub(r"\1", html)
     html = _HR_PARA_RE.sub("", html)
     return html.strip()
 
@@ -153,9 +156,19 @@ def _perspectives_block(heading, facets, anchor, valid_ns):
             f'<div class="rf-persp-list">{"".join(facet_html)}</div></section>')
 
 
-def _bibliography(sources):
-    rows = []
-    for src in sources:
+def _bib_note(note):
+    return f'<p class="rf-ref-note">{esc(note["text"])}</p>'
+
+
+def _bibliography(sources, notes=()):
+    """Numbered source rows, with the model's unnumbered bib_notes placed
+    after the rows that preceded them in the report (no number, no ref-N
+    id, so a note is never a citation target)."""
+    by_pos = {}
+    for note in notes:
+        by_pos.setdefault(note.get("after", 0), []).append(_bib_note(note))
+    rows = list(by_pos.pop(0, []))
+    for i, src in enumerate(sources, 1):
         n = src["n"]
         title_text = esc(src.get("title") or src.get("url") or f"Source {n}")
         if src.get("url"):
@@ -168,6 +181,9 @@ def _bibliography(sources):
             f'<div class="rf-ref" id="ref-{n}"><span class="rf-ref-num">[{n}]</span>'
             f'<span class="rf-ref-body">{link}{pub}</span></div>'
         )
+        rows.extend(by_pos.pop(i, []))
+    for pos in sorted(by_pos):
+        rows.extend(by_pos[pos])
     return ('<section class="rf-bib" id="refs" aria-label="Bibliography">'
             '<h2 class="section-title">Bibliography</h2>'
             f'<div class="rf-refs">{"".join(rows)}</div></section>')
@@ -211,7 +227,8 @@ def render_report(model, theme="neutral"):
         (sections[i]["heading"], f"sec-{i}")
         for i in h2_indexes if i not in skipped
     ]
-    if sources:
+    bib_notes = model.get("bib_notes") or []
+    if sources or bib_notes:
         toc_entries.append(("Bibliography", "refs"))
     if len(h2_indexes) >= TOC_MIN_SECTIONS:
         parts.append(_toc(toc_entries))
@@ -244,8 +261,8 @@ def render_report(model, theme="neutral"):
         doc.append(f'<section class="rf-sec rf-l{sec["level"]}">{html}</section>')
     parts.append(f'<div class="rf-doc">{"".join(doc)}</div>')
 
-    if sources:
-        parts.append(_bibliography(sources))
+    if sources or bib_notes:
+        parts.append(_bibliography(sources, bib_notes))
 
     parts.append(page_footer(theme=theme, title=title, section=FOOTER_SECTION,
                              right=date or ""))
@@ -287,6 +304,14 @@ Examples:
                     help="theme name under themes/ or a theme folder path (default: neutral)")
     ap.add_argument("--out", "-o", required=True, help="write the HTML report here")
     args = ap.parse_args()
+
+    # a bad theme (missing keys, an asset path escaping its folder) fails
+    # with one clean ERROR line before anything renders
+    try:
+        load_theme(args.theme)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     if args.model:
         if args.manifest or args.format:

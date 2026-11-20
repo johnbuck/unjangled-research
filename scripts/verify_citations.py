@@ -16,8 +16,8 @@ only (a '###' subsection inside does not end it), and entries are
 '[N]', '- [N]' or '* [N]' lines.
 
 Usage:
-    python verify_citations.py --report [path]
-    python verify_citations.py --report [path] --strict
+    python3 verify_citations.py --report [path]
+    python3 verify_citations.py --report [path] --strict
 
 Exit codes:
     0  no suspicious citations and at least half the entries verified
@@ -397,7 +397,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python verify_citations.py --report report.md
+  python3 verify_citations.py --report report.md
 
 Note: Requires internet connection to check DOIs.
 Uses free DOI resolver - no API key needed.

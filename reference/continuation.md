@@ -10,7 +10,7 @@ Trigger auto-continuation when report exceeds 18,000 words in single run.
 
 1. Generate sections 1-10 (stay under 18K words)
 2. Save continuation state file with context preservation
-3. Spawn continuation agent via Task tool
+3. Spawn a continuation agent (whatever subagent mechanism the harness provides)
 4. Continuation agent: Reads state -> Generates next batch -> Spawns next if needed
 5. Chain continues recursively until complete
 
@@ -18,7 +18,7 @@ Trigger auto-continuation when report exceeds 18,000 words in single run.
 
 ## Continuation State File
 
-**Location:** `~/.claude/research_output/continuation_state_[report_id].json`
+**Location:** the run folder — `~/Documents/[Topic]_Research_[YYYYMMDD]/` (or the run's `--dir`), the same folder that holds `sources.jsonl`, `evidence.jsonl`, `claims.jsonl`, `run_manifest.json` and `research_state.json` (written by `scripts/research_engine.py`). File name: `continuation_state_[report_id].json`.
 
 ```json
 {
@@ -69,28 +69,26 @@ Trigger auto-continuation when report exceeds 18,000 words in single run.
 
 ## Spawning Continuation Agent
 
-Use Task tool:
+Use whatever subagent mechanism the harness provides (a general-purpose subagent), with a prompt like:
 
 ```
-Task(
-  subagent_type="general-purpose",
-  description="Continue unjangled-research report generation",
-  prompt="""
 CONTINUATION TASK: Continue existing unjangled-research report.
 
 CRITICAL INSTRUCTIONS:
-1. Read continuation state: ~/.claude/research_output/continuation_state_[report_id].json
+1. Read continuation state: [run folder]/continuation_state_[report_id].json
 2. Read existing report: [file_path from state]
 3. Read LAST 3 completed sections for flow/style
 4. Load research context: themes, narrative arc, writing style
-5. Load source registry from state.artifacts.sources_path — use stable source_ids, assign display numbers via citation_manager.py
+5. Load source registry from state.artifacts.sources_path — use stable source_ids from sources.jsonl; number citations with the Phase 8 gate chain's numbering block (reference/quality-gates.md#phase-8-gate-chain)
 6. Maintain quality metrics (avg words, citation density, prose ratio)
 
 YOUR TASK:
 Generate next batch (stay under 18,000 words):
 [List next_sections from state]
 
-Use Write/Edit to append to: [file_path]
+Append the new sections to: [file_path]
+
+CITATION NUMBERING (python3, from the skill directory): run the Phase 8 gate chain's numbering block, exactly as documented and in order — reference/quality-gates.md#phase-8-gate-chain.
 
 QUALITY GATES:
 - Words per section: Within +/-20% of avg_words_per_finding
@@ -101,8 +99,6 @@ QUALITY GATES:
 After generating:
 - If more sections remain: Update state, spawn next agent
 - If final sections: Generate bibliography, verify report, cleanup state
-"""
-)
 ```
 
 ---
@@ -111,7 +107,7 @@ After generating:
 
 ### Context Loading (CRITICAL)
 
-1. Read continuation_state.json -> Load ALL context
+1. Read continuation_state_[report_id].json -> Load ALL context
 2. Read existing report file -> Review last 3 sections
 3. Extract patterns:
    - Sentence structure complexity
@@ -150,8 +146,8 @@ Calculate: Current words + remaining sections x avg_words_per_section
 - Generate final content sections
 - Generate COMPLETE bibliography from state.citations.bibliography_entries
 - Read entire assembled report
-- Run validation: `python scripts/validate_report.py --report [path]`
-- Delete continuation_state.json (cleanup)
+- Number citations and verify claim support by running the full Phase 8 gate chain on the assembled report: [quality-gates.md](./quality-gates.md#phase-8-gate-chain)
+- Delete continuation_state_[report_id].json (cleanup)
 - Report complete to user
 
 ---

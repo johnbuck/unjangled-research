@@ -1,9 +1,12 @@
 """Theme contract checks: the demo rendered under neutral and under a second
 theme folder differs in the :root block, font family, footer label, logo
 presence, and motif presence with no code change; a malformed theme.json
-raises a ValueError naming the bad key; the shipped CSS carries no hex
-literal; generated output stays free of external references; the neutral
-theme's embedded fonts percent-decode and base64-decode to valid WOFF."""
+raises a ValueError naming the bad key; a theme whose fonts.css or logo
+resolves outside its folder (../ path, absolute path, or symlink) fails
+to load naming the field, while subfolder assets still load; the shipped
+CSS carries no hex literal; generated output stays free of external
+references; the neutral theme's embedded fonts percent-decode and
+base64-decode to valid WOFF."""
 import base64
 import json
 import os
@@ -108,6 +111,95 @@ def test_malformed_theme_names_bad_key():
             assert key_path in raised, f"{key_path} not named in error: {raised!r}"
 
 
+def test_theme_assets_stay_in_the_theme_folder():
+    """A theme whose fonts.css or logo resolves outside its folder — a ../
+    relative path, an absolute path, or a symlink pointing out — fails to
+    load with a ValueError naming the field; assets in subfolders of the
+    theme folder still load and read back."""
+    sys.path.insert(0, SCRIPTS)
+    from theme import font_css, load_theme, logo_data_uri
+
+    font_css_text = "@font-face{font-family:'X';src:url(data:font/woff;base64,AAAA);}\n"
+    svg_text = "<svg xmlns='http://www.w3.org/2000/svg'></svg>"
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "outside.css"), "w", encoding="utf-8") as f:
+            f.write(font_css_text)
+        with open(os.path.join(tmp, "outside.svg"), "w", encoding="utf-8") as f:
+            f.write(svg_text)
+
+        def make_theme(name):
+            d = os.path.join(tmp, name)
+            os.makedirs(os.path.join(d, "assets"))
+            with open(os.path.join(ALT, "theme.json"), encoding="utf-8") as f:
+                spec = json.load(f)
+            spec["fonts"]["css"] = "assets/fonts.css"
+            spec["logo"] = "assets/logo.svg"
+            with open(os.path.join(d, "assets", "fonts.css"), "w", encoding="utf-8") as f:
+                f.write(font_css_text)
+            with open(os.path.join(d, "assets", "logo.svg"), "w", encoding="utf-8") as f:
+                f.write(svg_text)
+            with open(os.path.join(d, "theme.json"), "w", encoding="utf-8") as f:
+                json.dump(spec, f)
+            return d, spec
+
+        # control: subfolder assets load and the helpers read them back
+        d, spec = make_theme("good")
+        t = load_theme(d)
+        assert font_css(t) == font_css_text
+        assert logo_data_uri(t).startswith("data:image/svg+xml;base64,")
+
+        # control: a symlinked theme folder, and a relative folder path, load
+        os.symlink(d, os.path.join(tmp, "linked"))
+        t = load_theme(os.path.join(tmp, "linked"))
+        assert font_css(t) == font_css_text
+        cwd = os.getcwd()
+        try:
+            os.chdir(tmp)
+            assert font_css(load_theme("./good")) == font_css_text
+        finally:
+            os.chdir(cwd)
+
+        escapes = [
+            ("fonts.css", "../outside.css", False),
+            ("fonts.css", os.path.join(tmp, "outside.css"), False),  # absolute
+            ("fonts.css", "fonts.css", True),                        # symlink out
+            ("logo", "../outside.svg", False),
+            ("logo", os.path.join(tmp, "outside.svg"), False),       # absolute
+            ("logo", "logo.svg", True),                              # symlink out
+            ("fonts.css", "assets/../../outside.css", False),        # .. via subdir
+        ]
+        for i, (field, value, symlink) in enumerate(escapes):
+            d, spec = make_theme(f"escape{i}")
+            if field == "fonts.css":
+                spec["fonts"]["css"] = value
+            else:
+                spec["logo"] = value
+            if symlink:
+                target = os.path.join(tmp, "outside.css" if field == "fonts.css" else "outside.svg")
+                os.symlink(target, os.path.join(d, value))
+            with open(os.path.join(d, "theme.json"), "w", encoding="utf-8") as f:
+                json.dump(spec, f)
+            raised = ""
+            try:
+                load_theme(d)
+            except ValueError as e:
+                raised = str(e)
+            assert raised.startswith(f"{field}: "), (field, value, raised)
+            assert "outside the theme folder" in raised, (field, value, raised)
+
+        # a NUL byte in an asset path fails naming the field
+        d, spec = make_theme("nul")
+        spec["fonts"]["css"] = "fonts\x00.css"
+        with open(os.path.join(d, "theme.json"), "w", encoding="utf-8") as f:
+            json.dump(spec, f)
+        raised = ""
+        try:
+            load_theme(d)
+        except ValueError as e:
+            raised = str(e)
+        assert raised.startswith("fonts.css: "), raised
+
+
 def test_no_hex_literal_in_render_css():
     for fn in sorted(os.listdir(RENDER_CSS)):
         with open(os.path.join(RENDER_CSS, fn), encoding="utf-8") as f:
@@ -141,7 +233,8 @@ if __name__ == "__main__":
     test_neutral_theme_helpers()
     test_alt_theme_changes_rendered_output()
     test_malformed_theme_names_bad_key()
+    test_theme_assets_stay_in_the_theme_folder()
     test_no_hex_literal_in_render_css()
     test_output_has_no_external_references()
     test_embedded_fonts_decode_to_woff()
-    print("all 6 theme tests ran and passed")
+    print("all 7 theme tests ran and passed")

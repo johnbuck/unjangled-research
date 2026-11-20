@@ -18,7 +18,7 @@ SCRIPTS = os.path.join(ROOT, "scripts")
 sys.path.insert(0, SCRIPTS)
 
 from build_render_model import build_model  # noqa: E402
-from render_deck import CONTENT_SLIDE_CAP, render_deck  # noqa: E402
+from render_deck import CONTENT_SLIDE_CAP, render_deck, render_slides  # noqa: E402
 
 FORMATS_DIR = os.path.join(HERE, "fixtures", "formats")
 RENDER_DIR = os.path.join(HERE, "fixtures", "render")
@@ -231,6 +231,56 @@ def test_cli_report_path_alt_theme():
     check_deck_shape(slides_of(html), "cli alt deck")
 
 
+def test_ref_values_are_escaped():
+    """Ref values are escaped where they enter deck HTML (evidence lines,
+    stat-tile labels). render_slides inserts a deck dict's refs without
+    re-validating them, so a hostile ref in a hand-crafted slide list
+    must render as text, never a live tag (2.1 review)."""
+    hostile = '3 <img onerror="x" src=y>'
+    deck = {
+        "title": "Hostile refs deck",
+        "slides": [
+            {"layout": "cover", "title": "Hostile refs deck"},
+            {"layout": "statement", "headline": "Statement with a hostile stat ref",
+             "stats": [{"value": "42 things", "label": "of cases", "ref": hostile}]},
+            {"layout": "bullets", "title": "Bulletless slide, hostile evidence ref",
+             "refs": [hostile]},
+        ],
+    }
+    html = render_slides(deck)
+    assert "<img" not in html
+    assert 'onerror="x"' not in html
+    assert f"[{hostile}]" not in html
+    assert html.count("[3 &lt;img onerror=&quot;x&quot; src=y&gt;]") == 2
+
+
+def test_cli_bad_theme_exits_1_clean_error():
+    """A theme whose fonts.css escapes its folder fails the CLI with one
+    clean ERROR line naming the field — no traceback, no output file."""
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(ROOT, "themes", "neutral", "theme.json"),
+                  encoding="utf-8") as f:
+            data = json.load(f)
+        data["fonts"]["css"] = "../outside.css"
+        folder = os.path.join(d, "bad-theme")
+        os.makedirs(folder)
+        with open(os.path.join(folder, "theme.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        out = os.path.join(d, "deck.html")
+        r = subprocess.run(
+            [sys.executable, os.path.join(SCRIPTS, "render_deck.py"),
+             "--report", os.path.join(HERE, "fixtures", "valid_report.md"),
+             "--theme", folder, "--out", out],
+            capture_output=True, text=True,
+        )
+        assert r.returncode == 1, (r.returncode, r.stderr)
+        assert r.stderr.startswith("ERROR: "), r.stderr
+        assert "fonts.css" in r.stderr and "outside the theme folder" in r.stderr
+        assert "\n" not in r.stderr.strip()
+        assert "Traceback" not in r.stderr
+        assert not os.path.exists(out)
+
+
 if __name__ == "__main__":
     test_fixture_decks_both_themes()
     test_section_fallback_when_no_findings()
@@ -238,5 +288,7 @@ if __name__ == "__main__":
     test_contested_facet_slides()
     test_facet_fixture_deck_preserves_subsection()
     test_facet_slide_without_sides_condenses_subsection_html()
+    test_ref_values_are_escaped()
     test_cli_report_path_alt_theme()
-    print("all 7 render-deck tests ran and passed")
+    test_cli_bad_theme_exits_1_clean_error()
+    print("all 9 render-deck tests ran and passed")

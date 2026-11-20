@@ -563,6 +563,33 @@ def test_cli_slides_path():
         assert r.returncode == 2, (r.returncode, r.stderr)
 
 
+def test_cli_bad_theme_exits_1_clean_error():
+    """A theme whose fonts.css escapes its folder fails the CLI with one
+    clean ERROR line naming the field — no traceback, no output file."""
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(ROOT, "themes", "neutral", "theme.json"),
+                  encoding="utf-8") as f:
+            data = json.load(f)
+        data["fonts"]["css"] = "../outside.css"
+        folder = os.path.join(d, "bad-theme")
+        os.makedirs(folder)
+        with open(os.path.join(folder, "theme.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        out = os.path.join(d, "deck.pptx")
+        r = subprocess.run(
+            [sys.executable, os.path.join(SCRIPTS, "render_pptx.py"),
+             "--report", os.path.join(HERE, "fixtures", "valid_report.md"),
+             "--theme", folder, "--out", out],
+            capture_output=True, text=True,
+        )
+        assert r.returncode == 1, (r.returncode, r.stderr)
+        assert r.stderr.startswith("ERROR: "), r.stderr
+        assert "fonts.css" in r.stderr and "outside the theme folder" in r.stderr
+        assert "\n" not in r.stderr.strip()
+        assert "Traceback" not in r.stderr
+        assert not os.path.exists(out)
+
+
 if __name__ == "__main__":
     test_fixture_decks_both_themes()
     test_source_hyperlinks()
@@ -577,4 +604,5 @@ if __name__ == "__main__":
     test_all_layouts_deterministic()
     test_minimal_deck_defaults_and_fallbacks()
     test_cli_slides_path()
-    print("all 13 render-pptx tests ran and passed")
+    test_cli_bad_theme_exits_1_clean_error()
+    print("all 14 render-pptx tests ran and passed")

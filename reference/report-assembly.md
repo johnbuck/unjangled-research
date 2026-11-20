@@ -33,7 +33,7 @@
 mkdir -p ~/Documents/[folder_name]
 
 # Initialize markdown file with frontmatter
-# Path: [folder]/research_report_[YYYYMMDD]_[slug].md
+# Path: [folder]/report.md — the path init-run records and the Phase 8 gate chain reads
 ```
 
 ### Phase 8.2: Section Generation Loop
@@ -44,13 +44,13 @@ Each Write/Edit call contains ONE section (<=2,000 words per call)
 **Initialize research run (persist to disk):**
 ```bash
 # Create run manifest and artifact files using citation_manager CLI
-python scripts/citation_manager.py init-run --out-dir [folder] --query "[question]" --mode [mode]
+python3 scripts/citation_manager.py init-run --out-dir [folder] --query "[question]" --mode [mode]
 # Creates: run_manifest.json, sources.jsonl, evidence.jsonl, claims.jsonl
 ```
 
 **Register each source as you encounter it:**
 ```bash
-python scripts/citation_manager.py register-source \
+python3 scripts/citation_manager.py register-source \
   --json '{"raw_url": "...", "title": "...", "source_type": "academic", "year": "2024"}' \
   --dir [folder]
 # Returns stable source_id (sha256-based, survives renumbering and continuation)
@@ -58,13 +58,13 @@ python scripts/citation_manager.py register-source \
 
 **Assign display numbers after all sources registered:**
 ```bash
-python scripts/citation_manager.py assign-display-numbers --dir [folder]
+python3 scripts/citation_manager.py assign-display-numbers --dir [folder]
 # Maps stable source_ids to [1], [2], [3]... for rendering
 ```
 
-Source identity is stable across edits and continuation. Display numbers are derived at render time, never stored in state. This survives context compaction and enables continuation agents to pick up citation state via stable IDs.
+Source identity is stable across edits and continuation. The display-number map is stored in the run folder as `display_numbers.json` (saved by `assign-display-numbers`, rewritten in citation order by `renumber-report` in the Phase 8 gate chain). This survives context compaction and enables continuation agents to pick up citation state via stable IDs.
 
-**Section sequence:**
+**Section sequence** (comprehensive-report; every other format writes the sections its template in `references/report-templates/` lists, which are the sections `validate_report.py` requires):
 
 1. **Executive Summary** (200-400 words)
    - Tool: Write(file, frontmatter + Executive Summary)
@@ -111,12 +111,10 @@ Source identity is stable across edits and continuation. Display numbers are der
 - Clean topic name (remove special chars, use underscores)
 
 **2. File naming convention:**
-All files use same base name:
-- `research_report_20251104_topic_slug.md`
-- `research_report_20251104_topic_slug.html`
-- `research_report_20251104_topic_slug.pdf`
-
-**3. Also save copy to:** `~/.claude/research_output/` (internal tracking)
+The report files sit in the run folder beside `run_manifest.json`, under the names the Phase 8 gate chain uses (the folder name carries the topic and date):
+- `report.md` (`renumber-report` reads `[folder]/report.md` by default)
+- `report.html`
+- `report.pdf`
 
 ---
 
@@ -131,13 +129,8 @@ Example: 10 findings x 1,500 words = 15,000 words total
 
 ---
 
-## Gate order at Phase 8 (after assembly)
+## Phase 8 gates (after assembly)
 
-1. `python scripts/validate_report.py --report [path] --format [chosen]`
-2. `python scripts/readability_check.py [path]` — exit 0, every report, never skipped
-3. `python scripts/verify_citations.py --report [path]`
-4. `python scripts/verify_citations_v2.py --dir [run_dir]`
-5. `python scripts/render_report.py --report [path] --manifest [run_dir]/run_manifest.json --format [chosen] --out [html_path]` — only after all gates pass
-6. `python scripts/check_theme.py [html_path]` — 0 errors required before delivery
+This file gives no gate order of its own — run the one canonical Phase 8 gate chain, numbering and claim support included, in the documented order with every gate's exit codes: [quality-gates.md](quality-gates.md#phase-8-gate-chain).
 
 Full thresholds: `reference/quality-gates.md`. Citation style: `references/citations.md`.

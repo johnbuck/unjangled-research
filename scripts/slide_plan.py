@@ -58,6 +58,11 @@ NOTE_MAX = 600          # speaker notes carry fuller text, clipped hard
 _HEADING_RE = re.compile(r"<h[23]\b[^>]*>.*?</h[23]>", re.I | re.S)
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
+# An anchor keeps its URL in plain text: <a href="URL">text</a> reads
+# 'text (URL)' (E2-R3 — a deck slide never shows a link's text without
+# its URL). The href is entity-escaped in the HTML and unescapes with
+# the surrounding text in the final pass.
+_ANCHOR_RE = re.compile(r'<a\b[^>]*\bhref="([^"]*)"[^>]*>(.*?)</a>', re.I | re.S)
 # a stat value's leading token when the value splits as "<num> <unit>"
 _NUM_TOKEN_RE = re.compile(r"^[$€£¥]?\d[\d.,]*(?:[–—-]\d[\d.,]*)?[%×xX]?$")
 
@@ -77,8 +82,12 @@ def clip_words(text, n):
 
 
 def html_text(fragment):
-    """Plain text from a section's HTML: drop the h2/h3 headings, then tags."""
+    """Plain text from a section's HTML: drop the h2/h3 headings, keep a
+    link's URL beside its text, then drop the remaining tags."""
     text = _HEADING_RE.sub(" ", fragment or "")
+    text = _ANCHOR_RE.sub(
+        lambda m: f"{m.group(2).strip()} ({m.group(1)})".strip()
+        if m.group(2).strip() else m.group(1), text)
     text = _TAG_RE.sub(" ", text)
     return _WS_RE.sub(" ", unescape(text)).strip()
 

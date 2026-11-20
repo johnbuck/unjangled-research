@@ -110,12 +110,12 @@ This prevents synthesis fatigue when merging results from 3-5 agents.
 **Evidence persistence (v3.0):** After each retrieval batch, persist evidence immediately:
 ```bash
 # Register the source first (returns stable source_id)
-python scripts/citation_manager.py register-source --json '{"raw_url": "...", "title": "..."}' --dir [folder]
+python3 scripts/citation_manager.py register-source --json '{"raw_url": "...", "title": "...", "authors": ["..."], "year": 2026, "published_at": "2026-01"}' --dir [folder]
 
 # Then persist each evidence span from that source
-python scripts/evidence_store.py add --json '{"source_id": "...", "quote": "exact text", "evidence_type": "direct_quote", "locator": "page 5"}' --dir [folder]
+python3 scripts/evidence_store.py add --json '{"source_id": "...", "quote": "exact text", "evidence_type": "direct_quote", "locator": "page 5"}' --dir [folder]
 ```
-Evidence must not live only in model context — it must be persisted to `evidence.jsonl` before synthesis begins. This ensures continuation agents and claim-support verification can access the full evidence trail.
+`add` rejects the row (exit 1, JSON error on stderr) when `evidence_type` is missing or not one of `direct_quote`, `paraphrase`, `data_point`, `figure_reference`, `methodology`, or when `source_id` is not registered in the run's `sources.jsonl`. Evidence must not live only in model context — it must be persisted to `evidence.jsonl` before synthesis begins. This ensures continuation agents and claim-support verification can access the full evidence trail.
 
 **Example parallel execution (using search-cli via Bash):**
 ```
@@ -161,6 +161,8 @@ As results arrive:
 - **Deep mode:** 25+ sources with avg credibility >70/100 OR 10 minutes elapsed
 - **UltraDeep mode:** 30+ sources with avg credibility >75/100 OR 15 minutes elapsed
 
+The average is the `average_overall` field of `python3 scripts/source_evaluator.py --dir [folder]` (see Credibility tracking below).
+
 **Continue background searches:**
 - If threshold reached early, continue remaining parallel searches in background
 - Additional sources used in Phase 5 (SYNTHESIZE) for depth and diversity
@@ -175,9 +177,12 @@ As results arrive:
 - Geographic diversity (not just US sources)
 
 **Credibility tracking:**
-- Score each source 0-100 using source_evaluator.py
-- Flag low-credibility sources (<40) for additional verification
-- Prioritize high-credibility sources (>80) for core claims
+- Score each source 0-100 with the `source_evaluator.py` CLI (both modes print JSON):
+  - `python3 scripts/source_evaluator.py --url URL [--title TITLE] [--date DATE]` — one source; `--date` takes the `published_at` form (`YYYY`, `YYYY-MM`, `YYYY-MM-DD`, or a full timestamp) and a value violating the source schema exits 1
+  - `python3 scripts/source_evaluator.py --dir [folder]` — every row of the run's `sources.jsonl`; the output object's `average_overall` is the run average the quality gate above uses, and `sources[]` holds one score object per scorable row (rows it skips or scores without a field land in `defects`)
+- Exit codes: 0 scored; 1 defect (missing `sources.jsonl`, malformed `--date`, or bad rows — a JSON `error` object on stderr, rows with defects still listed under `defects`); 2 usage
+- Flag low-credibility sources (<40 `overall_score`) for additional verification
+- Prioritize high-credibility sources (>80 `overall_score`) for core claims
 
 **Techniques:**
 - Use search-cli for all searches (primary tool, multi-provider)
@@ -382,6 +387,8 @@ If critique identifies a critical knowledge gap (not just a writing issue), retu
 4. Create visualizations (tables, diagrams)
 5. Compile full bibliography
 6. Add methodology appendix
+
+A report counts as delivered only after it clears the Phase 8 gate chain, in the order given in `reference/quality-gates.md#phase-8-gate-chain`.
 
 **Output:** Complete research report ready for use
 

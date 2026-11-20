@@ -4,7 +4,8 @@ sections in model order, every body [N] linked to a matching ref-N anchor,
 the KPI strip absent when key_stats is empty, a Perspectives block per
 contested facet that preserves the matched subsection's every sentence,
 every source heading preserved in the body, a TOC only for long reports,
-and no external references except the bibliography's source links.
+and no external references except bibliography links and the renderer's
+own https body anchors (E2-R3).
 House style: plain asserts, no pytest."""
 import json
 import os
@@ -153,9 +154,24 @@ def test_bibliography_numbered_with_anchor_links():
 
 
 def test_no_external_references_except_bibliography_links():
-    for path, theme, model, html in _rendered():
+    """Body https anchors are the renderer's own link output (E2-R3), so
+    they are allowed beside bibliography links; every other external
+    reference — src=, http:// hrefs, @import, url() — stays forbidden, and
+    no anchor carries any scheme but https (data: URIs in src= are the
+    theme's own inline assets, not links)."""
+    rendered = list(_rendered())
+    fidelity_path = os.path.join(RENDER_DIR, "fidelity_report.md")
+    fidelity_model = _build(fidelity_path)
+    for theme in THEMES:
+        rendered.append((fidelity_path, theme, fidelity_model,
+                         render_report(fidelity_model, theme=theme)))
+    fidelity_html = next(h for p, t, m, h in rendered if p == fidelity_path)
+    assert '<a href="https://example.com/protocol">protocol page</a>' in fidelity_html
+    for path, theme, model, html in rendered:
         stripped = re.sub(r'<a class="rf-ref-link" href="[^"]+">.*?</a>', "", html)
+        stripped = re.sub(r'<a href="https://[^"]*">.*?</a>', "", stripped)
         assert not re.search(r'(?:src|href)\s*=\s*["\']https?://', stripped), (path, theme)
+        assert not re.search(r'<a[^>]+href="(?!https://|#)', stripped, re.I), (path, theme)
         assert "@import" not in html, (path, theme)
         assert not re.search(r"url\(\s*['\"]?https?://", html, re.I), (path, theme)
 
@@ -278,6 +294,33 @@ def test_cli_model_and_report_paths():
         assert "Research report · Research Report: Test Topic" in open(out2, encoding="utf-8").read()
 
 
+def test_cli_bad_theme_exits_1_clean_error():
+    """A theme whose fonts.css escapes its folder fails the CLI with one
+    clean ERROR line naming the field — no traceback, no output file."""
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(ROOT, "themes", "neutral", "theme.json"),
+                  encoding="utf-8") as f:
+            data = json.load(f)
+        data["fonts"]["css"] = "../outside.css"
+        folder = os.path.join(d, "bad-theme")
+        os.makedirs(folder)
+        with open(os.path.join(folder, "theme.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        out = os.path.join(d, "report.html")
+        r = subprocess.run(
+            [sys.executable, os.path.join(SCRIPTS, "render_report.py"),
+             "--report", os.path.join(HERE, "fixtures", "valid_report.md"),
+             "--theme", folder, "--out", out],
+            capture_output=True, text=True,
+        )
+        assert r.returncode == 1, (r.returncode, r.stderr)
+        assert r.stderr.startswith("ERROR: "), r.stderr
+        assert "fonts.css" in r.stderr and "outside the theme folder" in r.stderr
+        assert "\n" not in r.stderr.strip()
+        assert "Traceback" not in r.stderr
+        assert not os.path.exists(out)
+
+
 def test_print_rules_keep_citations_as_text():
     with open(os.path.join(ROOT, "assets", "render", "page.css"), encoding="utf-8") as f:
         css = f.read()
@@ -300,5 +343,6 @@ if __name__ == "__main__":
     test_perspectives_subsection_content_preserved()
     test_source_headings_preserved_in_body()
     test_cli_model_and_report_paths()
+    test_cli_bad_theme_exits_1_clean_error()
     test_print_rules_keep_citations_as_text()
-    print("all 14 render-report tests ran and passed")
+    print("all 15 render-report tests ran and passed")

@@ -5,8 +5,14 @@ Atomic Claim Extractor — decomposes report sections into typed claims.
 CLI subcommands:
   extract      Parse a markdown report into atomic claims (claims.jsonl)
   add          Manually add a single claim
-  list         List claims, optionally filtered by section or type
-  stats        Show claim statistics (counts by type/status)
+  list         List the latest extraction's claims, optionally filtered by
+               section or type
+  stats        Show claim statistics for the latest extraction (counts by
+               type/status)
+
+list and stats select the same rows verify scores (max extraction_id,
+doc_position order, the selection citation_manager.cited_order_ids makes):
+a claims.jsonl with no stamped rows at all is treated as one extraction.
 
 Claim identity:
   claim_id = sha256(section_id + normalized_text)[:16]
@@ -23,6 +29,12 @@ Claim types (per GPT Pro's refinement of Codex's proposal):
   - synthesis: needs traceability, softer threshold
   - recommendation: needs traceability, softer threshold
   - speculation: labeled, no support gate
+
+Under a heading that names an action or recommendation section (Action
+Items, Recommendations, Recommendation, Next Steps — alone or followed by
+more words, e.g. "Next Steps for Teachers") every sentence is a
+recommendation whatever its wording; only a sentence carrying a citation
+marker and a number stays factual (bug 11).
 """
 
 import argparse
@@ -39,6 +51,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 from bibliography import extract_citations, reader_facing_text  # noqa: E402
+from verify_claim_support import latest_extraction_rows  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -80,19 +93,6 @@ def read_jsonl(path: str) -> list[dict]:
     return rows
 
 
-def dedupe_claims(rows: list[dict]) -> list[dict]:
-    """Deduplicate by claim_id, keeping the LAST row per id.
-
-    claims.jsonl is append-only and extract re-stamps every sentence of the
-    current report on each run, so a claim_id can carry superseding rows.
-    The last row is the latest extraction's and wins.
-    """
-    by_id: dict = {}
-    for row in rows:
-        by_id[row.get('claim_id')] = row
-    return list(by_id.values())
-
-
 # ---------------------------------------------------------------------------
 # Report parsing helpers
 # ---------------------------------------------------------------------------
@@ -109,6 +109,36 @@ SECTION_PATTERNS = [
     (re.compile(r'^##\s+(.+)', re.I), lambda m: re.sub(r'\W+', '_', m.group(1).strip().lower())[:30]),
 ]
 
+# Action/recommendation sections (bug 11): the headings that name an
+# action or recommendation section across the format templates and
+# validate_report.FORMATS' required sections — Action Items
+# (quick-brief), Recommendations (comprehensive-report), Recommendation
+# (comparison), Next Steps (research-summary); discovery-catalog has
+# none. Matched on whole slug words, in the slug forms SECTION_PATTERNS
+# produce: the id itself or the id followed by more words, because
+# validate_report's required-section gate accepts any '##' heading that
+# contains the name ("Next Steps for Teachers" -> next_steps_for_teachers,
+# "Recommendation: Option A" -> recommendation_option_a). A near-name
+# like "Recommended tools" or "Action Plan" keeps today's classification.
+ACTION_SECTION_IDS = frozenset({
+    'action_items', 'recommendations', 'recommendation', 'next_steps',
+})
+
+
+def is_action_section(section_id: str) -> bool:
+    """True when section_id is an action-section id, alone or as the
+    leading slug words of a longer heading."""
+    return any(section_id == base or section_id.startswith(base + '_')
+               for base in ACTION_SECTION_IDS)
+
+# A digit-run number (quantity, percentage, year) inside a sentence.
+NUMBER_IN_TEXT_RE = re.compile(r'\b\d+(?:\.\d+)?\b')
+
+# Citation groups in the shared form ([1], [1, 2], [1,2]; numbers capped
+# at 1-3 digits, as bibliography.CITATION_RE holds) — stripped before the
+# number check so a marker's own digits do not count as a number.
+CITATION_GROUP_RE = re.compile(r'\[\d{1,3}(?:\s*,\s*\d{1,3})*\]')
+
 # Fenced code block lines, matching scripts/bibliography.py: a fence
 # opens on ``` or ~~~ (info string allowed) and closes on a bare fence.
 FENCE_OPEN_RE = re.compile(r'^(?:```|~~~)')
@@ -124,8 +154,20 @@ def classify_claim(text: str, section_id: str) -> str:
 
     # Recommendation indicators
     if any(w in lower for w in ['should', 'recommend', 'suggest', 'advise', 'consider']):
-        if section_id == 'recommendations':
-            return 'recommendation'
+        return 'recommendation'
+
+    # Action/recommendation sections (bug 11): the templates leave their
+    # action items uncited and phrase them as directives, so wording
+    # alone must not make them factual — whatever the wording, the
+    # sentence is a recommendation. The one exception is a sentence that
+    # carries a citation marker and a number outside the markers: it
+    # asserts a cited quantitative fact and stays factual. Citation
+    # markers are read by the shared rule (E1-R1), so [2024] is a year,
+    # not a citation.
+    if is_action_section(section_id):
+        without_markers = CITATION_GROUP_RE.sub('', text)
+        if extract_citations(text) and NUMBER_IN_TEXT_RE.search(without_markers):
+            return 'factual'
         return 'recommendation'
 
     # Speculation indicators
@@ -323,10 +365,13 @@ def cmd_add(args: argparse.Namespace) -> None:
 
 
 def cmd_list(args: argparse.Namespace) -> None:
-    """List claims with optional filters."""
+    """List the latest extraction's claims with optional filters."""
     claims_path = os.path.join(args.dir, 'claims.jsonl')
-    rows = read_jsonl(claims_path)
+    rows = latest_extraction_rows(read_jsonl(claims_path))
 
+    # Filters apply within the latest extraction; filtering first would
+    # recompute "latest" over the filtered rows and could resurrect an
+    # older extraction.
     if args.section:
         rows = [r for r in rows if r.get('section_id') == args.section]
     if args.type:
@@ -334,19 +379,13 @@ def cmd_list(args: argparse.Namespace) -> None:
     if args.status:
         rows = [r for r in rows if r.get('support_status') == args.status]
 
-    # Deduplicate, latest row per claim_id (superseding rows win)
-    unique = dedupe_claims(rows)
-
-    print(json.dumps({'count': len(unique), 'claims': unique}, indent=2, ensure_ascii=False))
+    print(json.dumps({'count': len(rows), 'claims': rows}, indent=2, ensure_ascii=False))
 
 
 def cmd_stats(args: argparse.Namespace) -> None:
-    """Show claim statistics."""
+    """Show claim statistics for the latest extraction."""
     claims_path = os.path.join(args.dir, 'claims.jsonl')
-    rows = read_jsonl(claims_path)
-
-    # Deduplicate, latest row per claim_id (superseding rows win)
-    unique = dedupe_claims(rows)
+    unique = latest_extraction_rows(read_jsonl(claims_path))
 
     by_type = {}
     by_status = {}

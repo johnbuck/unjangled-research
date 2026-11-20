@@ -14,6 +14,10 @@
 
 The agent runs every command from the skill directory (the folder containing
 `scripts/` and `themes/`); paths below are relative to it.
+Steps 1-4 are the readability, render, render-completeness and theme-QA
+gates of the Phase 8 gate chain; the full order, with the gates that run
+between them, is in
+`reference/quality-gates.md#phase-8-gate-chain`.
 
 ### Step 1: Readability gate (unchanged rule)
 
@@ -21,9 +25,12 @@ The agent runs every command from the skill directory (the folder containing
 python3 scripts/readability_check.py [report_path]
 ```
 
-Must exit 0 before any HTML is generated — every report, every format, never
-skipped. On failure the gate output names the repair; fix the prose and
-re-run. Full thresholds: `reference/quality-gates.md`.
+Must pass before any HTML is generated — every report, every format, never
+skipped: exit 0 is a clean pass, exit 2 is warnings only and still a pass;
+exit 1 fails (fix the prose, re-run); exit 3 (textstat unavailable) also
+blocks delivery.
+On failure the gate output names the repair. Full thresholds:
+`reference/quality-gates.md`.
 
 ### Step 2: Render the themed report
 
@@ -38,7 +45,7 @@ python3 scripts/render_report.py --report [report.md] --manifest [run_dir]/run_m
   blocks).
 - `--format` is the format chosen in Phase 8 (`quick-brief` / `comparison` /
   `research-summary` / `comprehensive-report` / `discovery-catalog`);
-  default: the manifest value, else inferred.
+  default: the run manifest's `format` field, else inferred from the report.
 - `--theme <name|path>` selects a theme: a name under `themes/` or a path to
   a theme folder. Default: `neutral`.
 - `--out` writes a single self-contained HTML file.
@@ -49,19 +56,74 @@ in order, a Perspectives block per contested facet, a numbered bibliography
 whose `id="ref-N"` anchors the in-text `[N]` citations link to, and a footer
 from the theme's label template.
 
-### Step 3: Theme QA gate
+**What the renderer guarantees (what epic-render-fidelity shipped):**
+
+- All report text is HTML-escaped before the markdown rules run, so the only
+  live markup in the report is what the renderer itself generates — a
+  `<script>` or `onerror=` copied from a web page renders as visible text.
+- Link rule: a `[text](https://…)` link in a report section stays a live
+  `<a href>` anchor (the scheme is matched case-insensitively, so `HTTPS://`
+  anchors too). Every other target — `http:`, `javascript:`, `file:`,
+  `data:`, relative — renders as plain escaped text `text (URL)`. In every
+  plain-text path (the executive summary strip, KPI labels, findings, deck
+  slides, speaker notes, .pptx text) all links, https included, render as
+  `text (URL)`. Authored markdown goes live only as an https section
+  anchor; the one other live anchor in the report is the renderer-built
+  bibliography row, which anchors whatever http(s) URL its entry carries
+  (the theme gate exempts `<a href>` links — they load nothing).
+- The bibliography boundary is the shared helper's exact, case-sensitive
+  heading rule: `## Bibliography` or `## Sources`, exact case, outside code
+  fences. A lower-case `## sources` heading is a body section; a `###`
+  subsection (such as `### Sources of funding`) is body text; sections after
+  the bibliography stay in the body.
+- Authored non-entry lines in the bibliography section (a note, a `###`
+  label) are kept and rendered as unnumbered note paragraphs under the
+  bibliography; decks list sources only, never notes.
+- Table rows survive: only the row directly after the header separates (and
+  only at the header's width); data rows containing `---` and rows written
+  without a trailing pipe keep every cell.
+- A theme whose `fonts.css` or `logo` resolves outside the theme folder
+  (`../`, absolute path, symlink) fails to load, and the renderer exits 1
+  with one clean `ERROR:` line naming the field before writing any output.
+
+### Step 3: Render completeness gate
+
+```bash
+python3 scripts/verify_html.py --html [report.html] --md [report.md]
+```
+
+The post-render completeness gate: the delivered HTML must still hold the
+report the author wrote — every section heading and body line, every
+citation marker, every bibliography entry and note, every link with its URL,
+no unfilled template tokens and no emojis. Exit 0 = pass
+(`verify_html: PASS`); exit 1 names each loss (`ERROR: …` lines plus
+`verify_html: FAIL (N errors)`) — a lost heading or body text, a link that
+lost its URL, a dropped table row, a missing citation, a lost bibliography
+entry or note. A loss means the renderer dropped authored content: fix the
+report or the theme and re-render, never the generated HTML.
+
+### Step 4: Theme QA gate
 
 ```bash
 python3 scripts/check_theme.py [report.html] [--theme <name|path>]
 ```
 
 Must report 0 errors before the report is delivered. Fix every ERROR and
-re-render; resolve WARNs or record the justification in the run manifest.
-Exit 0 = no errors (WARNs allowed); exit 1 = at least one ERROR. What the
-gate checks: `reference/quality-gates.md`. Pass `--theme` when Step 2 used a
-non-default theme.
+re-render; resolve WARNs or record the justification in the run manifest's
+`qa_notes` field. Exit 0 = no errors (WARNs allowed); exit 1 = at least
+one ERROR; exit 2 = the theme could not be loaded. Pass
+`--theme` when Step 2 used a non-default theme.
 
-### Step 4: Open (optional)
+Besides the standing rules (forbidden colors, external references,
+undeclared fonts, text in the motif keep-out — full list in
+`reference/quality-gates.md`), the gate fails injected markup and unsafe
+links: a `<script>` that is not the renderer's own `deck.js`, any `on…=`
+event handler attribute, a `javascript:` or `data:` document URL (entity
+tricks and any letter case included), a `srcdoc=` attribute — and, on
+`.pptx` packages, an external hyperlink target that is not `http(s)` or
+carries a control character.
+
+### Step 5: Open (optional)
 
 Open the HTML for the user when the environment allows it (for example
 `open` on macOS, `xdg-open` on Linux).
@@ -72,7 +134,7 @@ Open the HTML for the user when the environment allows it (for example
 
 When the user asks for slides, a presentation, or a deck, the agent renders
 one from the same inputs as the report (otherwise the report alone is
-delivered). Render it after the report has passed Steps 1-3. This works from
+delivered). Render it after the report has passed Steps 1-4. This works from
 a finished report of an earlier run too: pass its markdown via `--report`
 (and that run's manifest via `--manifest` if available) with no new research.
 
@@ -97,7 +159,8 @@ python3 scripts/check_theme.py [deck.html] [--theme <name|path>]
 ```
 
 `check_theme.py` must report 0 errors on the deck too before it is delivered
-(same ERROR/WARN rules as Step 3). Fix problems in the report or the theme
+(same ERROR/WARN rules as Step 4, including the injected-markup and
+hyperlink-target rules). Fix problems in the report or the theme
 and re-render — never by editing the generated HTML.
 
 ---
@@ -107,7 +170,7 @@ and re-render — never by editing the generated HTML.
 When the user asks for PowerPoint, a `.pptx`, or editable slides, the agent
 also renders a native PowerPoint deck from the same inputs as the report —
 an additional output next to the HTML report, never instead of it. Render it
-after the report has passed Steps 1-3 (and after the optional HTML deck).
+after the report has passed Steps 1-4 (and after the optional HTML deck).
 As with the HTML deck, a finished report of an earlier run works too: pass
 its markdown via `--report` (and that run's manifest via `--manifest` if
 available) with no new research. Authoring or editing the deck itself —
@@ -131,7 +194,9 @@ python3 scripts/check_theme.py [deck.pptx] [--theme <name|path>]
 `check_theme.py` must report 0 errors on the `.pptx` too before it is
 delivered. It inspects the package's slides, masters, layouts, theme parts,
 and relationships: forbidden colors, off-theme fonts, empty slides, and any
-external relationship other than a hyperlink are ERRORs; off-palette colors
+external relationship other than a hyperlink are ERRORs; an external
+hyperlink whose target is not `http(s)` (any letter case) or carries a
+control character is an ERROR too; off-palette colors
 WARN. Fix problems in the report or the theme and re-render — never by
 patching the generated file.
 
@@ -162,7 +227,10 @@ live there too.
 | `qa` | gate rules: `allowed_colors`, `forbidden_colors` (hex → reason), `forbid_dark_surfaces` |
 
 A new theme is exercised only through the renderer: re-run Step 2 with
-`--theme <name>` and gate the output with Step 3.
+`--theme <name>` and gate the output with Step 4. A theme whose `fonts.css`
+or `logo` resolves outside its folder (including through a symlink) fails to
+load, and every renderer exits 1 with one clean `ERROR:` line naming the
+field.
 
 ---
 
@@ -170,7 +238,7 @@ A new theme is exercised only through the renderer: re-run Step 2 with
 
 **Option A: WeasyPrint (preferred)**
 
-1. Render and gate the themed report first (Steps 1-3). The HTML is
+1. Render and gate the themed report first (Steps 1-4). The HTML is
    self-contained, so WeasyPrint needs no network access.
 2. Generate: `weasyprint [report.html] [report.pdf]`
 3. Open the PDF.

@@ -98,18 +98,19 @@ Mode Selection
 - **Format selection:** Before assembling the report, consult [format-selection.md](./references/format-selection.md) to choose the appropriate template from [references/report-templates/](./references/report-templates/) based on the question type. Use the default template only when no format-specific template matches.
 - **Citation density:** Cite the 1–2 most authoritative sources inline per sentence. Batch additional supporting sources at the paragraph or finding level, not per sentence. A sentence carrying 3+ bracketed references is unreadable to a human reader.
 
-**Scripts:**
-- `python scripts/validate_report.py --report [path] --format [format] --manifest [run_dir]/run_manifest.json` — the manifest enables the contested-facets gate: if `contested_facets` is non-empty, the report must contain a Perspectives/Debate section covering every listed facet — pass the format chosen in Phase 8 via format-selection.md (`quick-brief` / `comparison` / `research-summary` / `comprehensive-report` / `discovery-catalog`); each format has its own required sections, word targets, and source floors. Omitting `--format` assumes comprehensive-report.
-- `python scripts/verify_citations.py --report [path]`
-- `python scripts/verify_citations_v2.py --dir [run_dir]` (independent second network citation check)
-- `python scripts/readability_check.py [report_path]` (**MANDATORY — run on EVERY report, every time, before HTML/PDF generation; never skip, no exceptions.** Uses the vendored `textstat` in `vendor/`; no install needed. Must exit 0; failures tell you exactly what to fix: pipeline-internals leakage → move narration to run manifest; citation density → 1-2 refs/sentence, batch the rest at paragraph level; sentence length / reading grade → split compound sentences, unchain appositive lists, prefer plain words)
+**Scripts** (what each does and its flags — a reference, not a run order; the run order, numbering and claim support included, is the [Phase 8 gate chain](./reference/quality-gates.md#phase-8-gate-chain)):
+- `python3 scripts/validate_report.py --report [path] --format [format] --manifest [run_dir]/run_manifest.json` — the manifest enables the contested-facets gate: if `contested_facets` is non-empty, the report must contain a Perspectives/Debate section covering every listed facet — pass the format chosen in Phase 8 via format-selection.md (`quick-brief` / `comparison` / `research-summary` / `comprehensive-report` / `discovery-catalog`); each format has its own required sections, word targets, and source floors. Omitting `--format` assumes comprehensive-report.
+- `python3 scripts/readability_check.py [report_path]` (**MANDATORY — run on EVERY report, every time, before HTML/PDF generation; never skip, no exceptions.** Uses the vendored `textstat` in `vendor/`; no install needed. Exit 0 = pass; exit 2 = warnings only, still a pass; exit 1 = fail; exit 3 = textstat unavailable (blocks delivery). Failures tell you exactly what to fix: pipeline-internals leakage → move narration to run manifest; citation density → 1-2 refs/sentence, batch the rest at paragraph level; sentence length / reading grade → split compound sentences, unchain appositive lists, prefer plain words)
+- `python3 scripts/verify_citations.py --report [path]`
+- `python3 scripts/verify_citations_v2.py --dir [run_dir]` (independent second network citation check)
 - `scripts/md_to_html.py` — markdown converter used internally by the render model; not a delivery step
-- `python scripts/render_report.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [report.html]` — themed renderer; builds the render model in-process and writes a self-contained HTML report (`--theme <name|path>` overrides the default `neutral` theme)
-- `python scripts/render_deck.py --slides [deck.json] --out [deck.html]` — themed HTML slide deck from an authored slide list; `--report [path] --manifest ... --format ...` renders straight from a finished report (`--theme <name|path>` as above); see [slide-decks.md](./reference/slide-decks.md) for authoring
-- `python scripts/render_pptx.py --slides [deck.json] --out [deck.pptx]` — native editable PowerPoint deck from the same slide list or report (`--theme <name|path>` as above); an additional output, never a replacement for the HTML report
-- `python scripts/check_theme.py [report.html] [--theme <name|path>]` — theme QA gate on the rendered HTML and on `.pptx` decks; 0 errors required before delivery (exit 1 on any ERROR)
+- `python3 scripts/render_report.py --report [path] --manifest [run_dir]/run_manifest.json --format [format] --out [report.html]` — themed renderer; builds the render model in-process and writes a self-contained HTML report (`--theme <name|path>` overrides the default `neutral` theme)
+- `python3 scripts/verify_html.py --html [report.html] --md [report.md]` — post-render completeness gate: the rendered HTML must still hold every authored heading, line, citation, bibliography entry and link URL (exit 0 pass; exit 1 names each loss)
+- `python3 scripts/render_deck.py --slides [deck.json] --out [deck.html]` — themed HTML slide deck from an authored slide list; `--report [path] --manifest ... --format ...` renders straight from a finished report (`--theme <name|path>` as above); see [slide-decks.md](./reference/slide-decks.md) for authoring
+- `python3 scripts/render_pptx.py --slides [deck.json] --out [deck.pptx]` — native editable PowerPoint deck from the same slide list or report (`--theme <name|path>` as above); an additional output, never a replacement for the HTML report
+- `python3 scripts/check_theme.py [report.html] [--theme <name|path>]` — theme QA gate on the rendered HTML and on `.pptx` decks; 0 errors required before delivery (exit 1 on any ERROR; exit 2 = the theme could not be loaded)
 
-**Phase 8 order (explicit):** `validate_report.py` → `readability_check.py` → `render_report.py` → `check_theme.py` — render only after the first two pass, deliver only at 0 QA errors. When the run also includes a deck, follow [slide-decks.md](./reference/slide-decks.md) after the report passes its gate: author or export the slide list, render `render_deck.py` and (when wanted) `render_pptx.py`, and gate each at 0 errors. A deck with no research run (paths B and C) skips Phases 1-8 entirely and goes straight to the guide. Full loop with the citation verifiers: [quality-gates.md](./reference/quality-gates.md).
+**Phase 8 gates:** this file gives no Phase 8 order of its own — run the one canonical gate chain, numbering and claim support included, in the documented order with every gate's exit codes: [quality-gates.md](./reference/quality-gates.md#phase-8-gate-chain). Render and deliver only at 0 QA errors. When the run also includes a deck, follow [slide-decks.md](./reference/slide-decks.md) after the report passes its gate: author or export the slide list, render `render_deck.py` and (when wanted) `render_pptx.py`, and gate each at 0 errors. A deck with no research run (paths B and C) skips Phases 1-8 entirely and goes straight to the guide.
 
 ---
 
@@ -134,15 +135,15 @@ Every comprehensive run answers at planning: "which facets of this topic are act
 - `sources.jsonl` — stable source registry with canonical IDs
 - `evidence.jsonl` — append-only evidence store with quotes and locators
 - `claims.jsonl` — atomic claim ledger with support status
-- `run_manifest.json` — query, mode, assumptions, provider config
+- `run_manifest.json` — query, mode, format, assumptions, provider config, `qa_notes`, `contested_facets`
 - `projects.jsonl` — discovery runs only: one row per candidate per `schemas/discovery_project.schema.json` (name, registry, tier, metrics with asOf dates); the report's comparison matrix renders FROM this file — never the reverse
 - HTML report (themed, self-contained)
 - Slide deck (optional, themed, self-contained — when the user asked for one; author from research, a report, or the user's own notes per [slide-decks.md](./reference/slide-decks.md))
 - PowerPoint deck (optional, editable .pptx, themed)
-- PDF (professional print, auto-opened)
+- PDF (professional print, written next to the HTML report — no script opens it)
 
 **Quality standards:**
-- Sources at or above the chosen format's floor (3 quick-brief / 5 research-summary / 6 comparison / 10 comprehensive), 3+ per major claim
+- Sources at or above the chosen format's floor — 3 quick-brief / 5 research-summary / 6 comparison / 8 discovery-catalog / 10 comprehensive-report (the floors `validate_report.FORMATS` holds; validate_report warns below the floor, it does not fail) — and 3+ per major claim
 - All factual claims cited immediately [N] with evidence backing in `evidence.jsonl`
 - Claim-support verification mandatory: no unsupported factual claims pass delivery
 - No placeholders, no fabricated citations

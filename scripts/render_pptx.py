@@ -49,6 +49,9 @@ slide_plan at 1280x720.
     python3 render_pptx.py --report report.md [--manifest run_manifest.json] \
         [--format comprehensive-report] [--theme neutral] --out deck.pptx
     python3 render_pptx.py --slides deck.json [--theme neutral] --out deck.pptx
+
+A theme that fails to load (missing keys, an asset path escaping its
+folder) exits 1 with a single `ERROR: <message>` line on stderr.
 """
 import argparse
 import json
@@ -839,6 +842,14 @@ Examples:
                     help="theme name under themes/ or a theme folder path (default: neutral)")
     ap.add_argument("--out", "-o", required=True, help="write the .pptx deck here")
     args = ap.parse_args()
+
+    # a bad theme (missing keys, an asset path escaping its folder) fails
+    # with one clean ERROR line before anything renders
+    try:
+        load_theme(args.theme)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     if args.model:
         if args.manifest or args.format:

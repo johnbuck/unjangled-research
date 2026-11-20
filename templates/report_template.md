@@ -218,6 +218,23 @@ CITATION TRACKING (CRITICAL):
 
 ---
 
+## Contested Facets & Perspectives
+
+<!-- ONLY when run_manifest.contested_facets is non-empty. One ### subsection
+per listed facet, named after the facet itself or labelled '### Facet N: ...'
+(N = the facet's 1-based position in the manifest list) — validate_report.py
+enforces this and fails an uncovered facet. Each subsection holds every side's
+strongest case, each sourced from its own flagship documents, symmetric depth and
+citation density. Omit the whole section when the list is empty. -->
+
+### [Facet name from run_manifest.contested_facets, or 'Facet N: ...' in manifest order]
+
+[Every side's strongest case: the best evidence and reasoning each side's
+own proponents advance, cited to flagship documents. Equal depth, equal
+citation density, equal limitation-noting for every side.]
+
+---
+
 ## Limitations & Caveats
 
 <!-- Be honest and comprehensive about what's uncertain -->
@@ -316,12 +333,13 @@ CITATION TRACKING (CRITICAL):
 <!-- DO NOT use "...continue..." or "[Continue with all sources...]"             -->
 <!-- EVERY citation [N] in report body MUST have corresponding entry here        -->
 <!-- If report cites [1]-[25], bibliography MUST contain all 25 complete entries -->
-<!-- Format: [N] Author/Organization (Year). "Title". Publication. URL           -->
+<!-- One entry per line, numbered [1]..[N] in first-citation order, every entry  -->
+<!-- cited in the body. Format: [N] Author (Year). "Title". URL                 -->
 <!-- ============================================================================ -->
 
-[1] Author Name or Organization ([YEAR]). "Full Title of Article or Paper". Publication Name or Website. https://full-url.com (Retrieved: [CURRENT_DATE])
+[1] Author Name or Organization (2026). "Full Title of Article or Paper". https://full-url.com
 
-[2] Second Author ([YEAR]). "Second Article Title". Journal Name, Volume(Issue), pages. https://doi-or-url.com (Retrieved: [CURRENT_DATE])
+[2] Second Author (2025). "Second Article Title". https://doi-or-url.com
 
 <!-- Add ALL remaining citations [3] through [N] here -->
 <!-- Standard reports: 15-30 sources | Deep/UltraDeep: 30-50 sources -->
@@ -340,7 +358,7 @@ or tool fallbacks. Process detail lives in the run manifest, not here.]
 
 **Evidence standards:**
 - Claims rated by source independence and method strength
-- Direct quotes byte-verified against fetched sources
+- Direct quotes matched against the fetched sources' visible page text
 - Contested claims flagged with the disagreement stated
 
 ### Sources Consulted

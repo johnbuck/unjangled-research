@@ -27,6 +27,7 @@ every field combination inside the layout at 1280x720):
     facet        title, sides[{label(40), summary(200)}] 1-4 | bullets x3 (fallback)
     quote        quote(400), attribution?(120), title?(35), eyebrow?
     sources      title(40), sources[{n, title(70), publisher?(60), url?}] 1-12, more_sources?
+                 (a source url must start with http:// or https://, any case)
     closing      headline(90), steps[] 1-5x(120)             (numbered next steps)
 
 CLI (E5-R4): write the research slide plan for a report as an editable
@@ -43,6 +44,7 @@ error naming the slide index and field and exits 1.
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -256,8 +258,29 @@ def _check_sources(value, where):
         "n": lambda v, w: _citation(v, w),
         "title": lambda v, w: _string(v, w, limit=70),
         "publisher": lambda v, w: _string(v, w, limit=60),
-        "url": lambda v, w: _string(v, w, limit=300),
+        "url": _http_url,
     })
+
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _http_url(value, where):
+    """A source url must be a web link: it starts with http:// or https://.
+    The scheme compares case-insensitively (RFC 3986 3.1: HTTPS:// is the
+    same link). file://, UNC paths (\\host\\share), javascript:, data:,
+    scheme-relative and relative targets are rejected, as is any control
+    character (tab, newline, NUL), because a rendered deck must not carry
+    a link that opens local or scripted content, and browsers strip such
+    characters before reading the scheme."""
+    _string(value, where, limit=300)
+    if not value[:8].lower().startswith(("http://", "https://")):
+        raise DeckError(f"{where}: must start with http:// or https:// "
+                        f"(got {value!r})")
+    if _CONTROL_CHARS.search(value):
+        raise DeckError(f"{where}: must not contain control characters "
+                        f"(got {value!r})")
+    return value
 
 
 def _check_more_sources(value, where):

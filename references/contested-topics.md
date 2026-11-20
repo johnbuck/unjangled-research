@@ -127,3 +127,19 @@ found no live disagreement and stands behind that claim — an auditable
 position, not a skipped question). Load this file when the array is
 non-empty; the validator fails a report whose listed facets lack a
 covering Perspectives/Debate section.
+
+Heading convention (validator-enforced, `validate_report.py --manifest`):
+the covering section is the first `##` section whose heading contains
+"Perspectives", "Debate", "Contested", "All sides" or "Steelman". Inside
+it, give each listed facet its own `###` subsection, either named after
+the facet or explicitly labelled `### Facet N: ...`, where N is the
+facet's 1-based position in the manifest list. A name covers the facet
+when the heading carries at least 60% of the words of the facet's name,
+which is the facet text before its first colon or question mark, with
+parenthetical glosses dropped. For example, `### Economic impact on
+consumers` covers the facet "Economic impact on consumers: who pays?".
+Each heading covers at most one facet. Unlabelled subsections never cover
+a facet by their order alone, and an out-of-range or repeated `Facet N`
+label covers no facet by its number. When a listed facet comes back
+uncovered, `validate_report.py` names it and tells you to label the
+subsection.

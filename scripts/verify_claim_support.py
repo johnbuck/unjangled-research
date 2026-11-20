@@ -3,12 +3,14 @@
 Claim-Support Verification — checks whether evidence supports claims.
 
 CLI subcommands:
-  verify       Check all claims against evidence, update support_status
+  verify       Check the latest extraction's claims against evidence,
+               update support_status
   link         Resolve citation numbers to sources through the run's
                display-number map (display_numbers.json, written by
                citation_manager.py assign-display-numbers), then link
                claims to evidence rows
-  report       Generate a support verification summary
+  report       Generate a support verification summary over the latest
+               extraction (the same rows verify scores)
 
 Version 1 is deterministic and cheap: entity, number, date, and
 lexical-overlap checks over stored evidence. No LLM calls.
@@ -288,8 +290,35 @@ def cmd_link(args: argparse.Namespace) -> None:
         'unresolved_citation_numbers': sorted(set(unresolved)),
     }))
 
+def latest_extraction_rows(claims: list[dict]) -> list[dict]:
+    """Rows of the latest extraction only, keep-last per claim_id.
+
+    The same selection cited_order_ids makes (citation_manager.py): rows
+    of the max extraction_id, in doc_position order. extract re-stamps
+    the current report on every run, so those rows are exactly the
+    current report; claim_ids whose sentences were deleted are never
+    superseded and must not be scored. Rows without an extraction_id
+    never contribute when stamped rows exist (manual `add`); a
+    claims.jsonl with no stamped rows at all (from before extraction
+    stamping) is treated as one extraction in file order.
+    """
+    stamped = [c for c in claims if c.get('extraction_id')]
+    if stamped:
+        latest = max(c['extraction_id'] for c in stamped)
+        rows = sorted(
+            (c for c in stamped if c['extraction_id'] == latest),
+            key=lambda c: c.get('doc_position', float('inf')),
+        )
+    else:
+        rows = list(claims)
+    by_id: dict = {}
+    for c in rows:
+        by_id[c.get('claim_id')] = c
+    return list(by_id.values())
+
+
 def cmd_verify(args: argparse.Namespace) -> None:
-    """Verify all claims against evidence, update claims.jsonl."""
+    """Verify the latest extraction's claims against evidence, update claims.jsonl."""
     claims_path = os.path.join(args.dir, 'claims.jsonl')
     evidence_path = os.path.join(args.dir, 'evidence.jsonl')
     sources_path = os.path.join(args.dir, 'sources.jsonl')
@@ -307,13 +336,11 @@ def cmd_verify(args: argparse.Namespace) -> None:
         ev_by_source.setdefault(sid, []).append(ev.get('quote', ''))
         ev_by_id[eid] = ev
 
-    # Deduplicate claims, keeping the LAST row per claim_id: extract
-    # re-stamps the current report on every run, so later rows supersede
-    # older ones (latest extraction wins).
-    by_id: dict = {}
-    for c in claims:
-        by_id[c.get('claim_id')] = c
-    unique_claims = list(by_id.values())
+    # Score only the latest extraction's rows (latest_extraction_rows,
+    # above): claims from earlier extractions whose sentences the report
+    # no longer contains are never superseded, so scoring them would
+    # fail --strict on every retry after a deletion.
+    unique_claims = latest_extraction_rows(claims)
 
     verified = 0
     updated_claims = []
@@ -354,10 +381,13 @@ def cmd_verify(args: argparse.Namespace) -> None:
         verified += 1
         updated_claims.append(claim)
 
-    # Rewrite claims.jsonl with updated statuses
-    write_jsonl(claims_path, updated_claims)
+    # Rewrite claims.jsonl preserving every row (the file is append-only;
+    # older extractions' rows keep their historical statuses, unscored).
+    # The selected rows are the same dict objects, so their updated
+    # support_status lands in the written file.
+    write_jsonl(claims_path, claims)
 
-    # Compute summary
+    # Compute summary over the scored rows only (the latest extraction)
     status_counts = Counter(c.get('support_status') for c in updated_claims)
     factual_unsupported = sum(
         1 for c in updated_claims
@@ -384,15 +414,14 @@ def cmd_verify(args: argparse.Namespace) -> None:
 
 
 def cmd_report(args: argparse.Namespace) -> None:
-    """Generate human-readable support verification report."""
+    """Generate a human-readable report over the latest extraction."""
     claims_path = os.path.join(args.dir, 'claims.jsonl')
     claims = read_jsonl(claims_path)
 
-    # Deduplicate, latest row per claim_id (superseding rows win)
-    by_id: dict = {}
-    for c in claims:
-        by_id[c.get('claim_id')] = c
-    unique = list(by_id.values())
+    # The same rows verify scores (latest_extraction_rows): claims from
+    # earlier extractions whose sentences the report no longer contains
+    # are never superseded and must not be listed.
+    unique = latest_extraction_rows(claims)
 
     lines = ['# Claim Support Verification Report', '']
 

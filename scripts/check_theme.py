@@ -16,7 +16,22 @@ ERROR (HTML):
   * a color from the theme's qa.forbidden_colors appears (reason included)
   * an external resource reference: http(s):// or protocol-relative // in
     src=, href= of any non-<a> element (plain <a href="https://..."> hyperlinks
-    are allowed - bibliography links), @import, or url()
+    are allowed - bibliography links), @import, or url(); src= and href=
+    values are read quoted or unquoted
+  * an injected <script> element: the only script allowed is the renderer's
+    own, recognised by a body byte-identical to assets/render/deck.js and an
+    open tag without src= (a src= replaces the body with other code)
+  * an event handler attribute (onerror=, onclick=, any on*=) inside a real
+    tag, any letter case, quoted or unquoted value; escaped text such as
+    &lt;img onerror=x&gt; is not a tag and is never flagged
+  * a javascript: URL in any tag's URL attribute (href=, src=, action=,
+    formaction=, data=, poster=, xlink:href= and the like) or in a <meta>
+    refresh content= url, case-insensitive, with leading whitespace/control
+    characters and entity tricks (jav&#x61;script:) decoded first
+  * a data: URL that carries a document rather than an image (data:text/html
+    and any other non-image/* type, or image/svg+xml loaded into a frame,
+    object or embed) in the same attributes
+  * an iframe srcdoc= attribute (an inline document; its escaped markup runs)
   * a font-family that is not the theme's fonts.family, one of its
     fonts.fallback families, or a generic family
   * text in the motif keep-out: an outer-cell motif polygon intersecting the
@@ -36,6 +51,10 @@ inspected):
     val, case-insensitive (part and reason included)
   * a Relationship with TargetMode="External" whose Type is not the
     hyperlink type
+  * an external hyperlink relationship whose target does not start with
+    http:// or https:// (scheme compared case-insensitively; file://,
+    javascript:, UNC paths and empty targets fail), or whose target
+    carries a control character
   * a latin/ea/cs typeface (a:latin, a:ea, a:cs, including the theme
     fontScheme) that is not the theme's fonts.family, one of its
     fonts.fallback families, a generic family, or a theme placeholder
@@ -49,11 +68,13 @@ WARN (.pptx):
     + qa.allowed_colors + FFFFFF/000000)
 """
 import argparse
+import os
 import re
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
 import zlib
+from html import unescape
 
 from motif import COVER_KEEPOUTS
 from theme import load_theme
@@ -70,6 +91,45 @@ HEX3 = re.compile(r"#[0-9A-Fa-f]{3}\b(?![0-9A-Fa-f])")
 HEXVAL6 = re.compile(r"^[0-9A-Fa-f]{6}$")
 HYPERLINK_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 INLINE_TAGS = ("body", "section", "div", "main", "article", "aside", "header", "footer")
+
+# The renderer's own deck script: render_lib.deck() embeds this file's text
+# verbatim inside <script>...</script>. A script body byte-identical to it is
+# the only live script a themed render may carry.
+DECK_JS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "assets", "render", "deck.js")
+SCRIPT_OPEN_RE = re.compile(r"<script\b[^>]*>", re.I)
+SCRIPT_CLOSE_RE = re.compile(r"</script\s*>", re.I)
+COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+TAG_RE = re.compile(r"<([a-zA-Z][\w-]*)((?:[^<>\"']|\"[^\"]*\"|'[^']*')*)>")
+QUOTED_RE = re.compile(r"\"[^\"]*\"|'[^']*'")
+ATTR_VALUE_RE = re.compile(r"=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]*)")
+HANDLER_RE = re.compile(r"(?<![\w-])(on[a-zA-Z]+)\s*=", re.I)
+URL_ATTR_RE = re.compile(r"(?<![\w-])(href|src)\s*=\s*"
+                         r"(?:\"([^\"]*)\"|'([^']*)'|([^\s>]*))", re.I)
+URL_STRIP_RE = re.compile(r"[\t\n\r\f\v]")
+# Leading/trailing characters a URL parser trims: C0 controls and space.
+URL_TRIM = "".join(chr(c) for c in range(0x21))
+# Attributes whose value a browser loads, submits to or navigates to as a URL.
+LIVE_URL_ATTRS = frozenset((
+    "href", "src", "action", "formaction", "data", "poster", "background",
+    "cite", "codebase", "longdesc", "lowsrc", "dynsrc", "manifest", "icon",
+    "ping", "archive", "classid", "srcset"))
+ANY_ATTR_RE = re.compile(r"(?<![\w-])([a-zA-Z_:][\w:.-]*)\s*=\s*"
+                         r"(?:\"([^\"]*)\"|'([^']*)'|([^\s>]*))")
+META_URL_RE = re.compile(r"url\s*=\s*(.*)$", re.I | re.S)
+SRC_ATTR_RE = re.compile(r"(?<![\w-])src\s*=", re.I)
+FRAME_TAGS = frozenset(("iframe", "frame", "object", "embed"))
+PPTX_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _deck_js_text():
+    """The renderer's deck.js text, or None when it cannot be read (then no
+    script is recognised and every <script> is reported)."""
+    try:
+        with open(DECK_JS_PATH, encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return None
 
 
 def _norm_hex(h):
@@ -128,6 +188,116 @@ def _is_external(url):
     if url.startswith("data:"):
         return False
     return url.startswith("//") or "http://" in url or "https://" in url
+
+
+def _is_javascript_url(url):
+    """True when the attribute value is a javascript: URL the way a browser
+    reads it: entities decode once, tab/newline/CR vanish anywhere, leading
+    and trailing whitespace is trimmed, and the scheme is case-insensitive."""
+    return _norm_url(url).startswith("javascript:")
+
+
+def _norm_url(url):
+    """The attribute value the way a URL parser reads its scheme: entities
+    decoded once, tab/newline/CR removed anywhere, leading and trailing C0
+    controls and whitespace trimmed, lowercased."""
+    v = URL_STRIP_RE.sub("", unescape(url))
+    return v.strip(URL_TRIM).strip().strip(URL_TRIM).lower()
+
+
+def _is_data_document(url, tag):
+    """True when the value is a data: URL whose payload a browser renders
+    as a document that can run script: any non-image/* media type, or
+    image/svg+xml loaded into a frame, object or embed. Image data: URLs
+    (the theme logo) are inert."""
+    v = _norm_url(url)
+    if not v.startswith("data:"):
+        return False
+    mediatype = v[5:].split(",", 1)[0].split(";", 1)[0].strip()
+    if not mediatype.startswith("image/"):
+        return True
+    return mediatype == "image/svg+xml" and tag in FRAME_TAGS
+
+
+def _attr_value(m):
+    return m.group(2) if m.group(2) is not None else (
+        m.group(3) if m.group(3) is not None else (m.group(4) or ""))
+
+
+def _check_live_url(tag, attr, value, errs):
+    if _is_javascript_url(value):
+        errs.append(f"javascript: URL in <{tag}> {attr}= ({value})")
+    elif _is_data_document(value, tag):
+        errs.append(f"data: document URL in <{tag}> {attr}= ({value})")
+
+
+def _iter_open_tags(src):
+    """(tag, attrs) for every real opening tag in src. HTML comments are
+    stripped first (comment content is inert), so escaped text such as
+    &lt;img onerror=x&gt; never yields a tag."""
+    for m in TAG_RE.finditer(src):
+        yield m.group(1).lower(), m.group(2)
+
+
+def _check_injected_markup(src, errs):
+    """Script/handler/javascript: rules (E2-R5): every <script> must pair
+    with a close tag and its body must be byte-identical to the renderer's
+    deck.js and its open tag carries no src=; no on*= attribute may sit in a
+    real tag; no URL attribute or meta refresh may carry a javascript: or
+    data: document URL; no srcdoc= may appear. Recognised deck.js bodies are masked out of the tag
+    scan but their open tags stay scannable (an onload= there still runs);
+    hostile script bodies stay scannable. Returns the comment-stripped,
+    deck.js-masked source for further tag checks."""
+    nocmt = COMMENT_RE.sub(" ", src)
+    # Markup inside a quoted attribute value (title="<script>…") is inert:
+    # blank the value contents of real tags before pairing script tags, the
+    # way the HTML tokenizer consumes them.
+    masked = nocmt
+    for m in TAG_RE.finditer(nocmt):
+        for q in QUOTED_RE.finditer(m.group(2)):
+            start = m.start(2) + q.start()
+            inner = q.group(0)[1:-1]
+            masked = (masked[:start + 1] + " " * len(inner)
+                      + masked[start + 1 + len(inner):])
+    opens = sorted((m.start(), m.end()) for m in SCRIPT_OPEN_RE.finditer(masked))
+    closes = sorted((m.start(), m.end()) for m in SCRIPT_CLOSE_RE.finditer(masked))
+    deck_js = _deck_js_text()
+    scan = nocmt
+    for o_start, o_end in opens:
+        close = next((c for c in closes if c[0] > o_end), None)
+        if close is None:
+            errs.append("injected script element (unclosed <script> tag)")
+            continue
+        closes.remove(close)
+        body = masked[o_end:close[0]]
+        has_src = SRC_ATTR_RE.search(ATTR_VALUE_RE.sub("=", masked[o_start:o_end]))
+        if deck_js is not None and body == deck_js and has_src:
+            errs.append("injected script element (src= on the renderer's deck.js "
+                        "script loads other code)")
+            continue
+        if deck_js is not None and body == deck_js:
+            blank = " " * (close[1] - o_end)
+            scan = scan[:o_end] + blank + scan[close[1]:]
+            continue
+        snippet = " ".join((body.strip() or masked[o_start:o_end]).split())[:40]
+        errs.append(f"injected script element (not the renderer's deck.js: {snippet})")
+    for tag, attrs in _iter_open_tags(scan):
+        bare = ATTR_VALUE_RE.sub("=", attrs)
+        for h in HANDLER_RE.finditer(bare):
+            errs.append(f"event handler attribute {h.group(1).lower()}= in <{tag}>")
+        for a in ANY_ATTR_RE.finditer(attrs):
+            attr = a.group(1).lower()
+            local = attr.rsplit(":", 1)[-1]
+            value = _attr_value(a)
+            if local in LIVE_URL_ATTRS:
+                _check_live_url(tag, attr, value, errs)
+            elif local == "srcdoc":
+                errs.append(f"inline document attribute srcdoc= in <{tag}>")
+            elif tag == "meta" and local == "content":
+                u = META_URL_RE.search(unescape(value))
+                if u:
+                    _check_live_url(tag, attr, u.group(1).strip().strip("\"'"), errs)
+    return scan
 
 
 def _var_tokens(text):
@@ -247,9 +417,16 @@ def check_pptx(path, theme):
                 if _local(rel.tag) != "Relationship" or rel.get("TargetMode") != "External":
                     continue
                 rtype = rel.get("Type") or ""
+                raw = rel.get("Target") or ""
+                target = raw.strip()
                 if rtype != HYPERLINK_REL:
                     errs.append(f"external relationship of type {rtype} in {name} "
-                                f"({rel.get('Target')})")
+                                f"({raw})")
+                elif PPTX_CONTROL_RE.search(raw):
+                    errs.append(f"hyperlink target contains a control character "
+                                f"in {name} ({raw!r})")
+                elif not target[:8].lower().startswith(("http://", "https://")):
+                    errs.append(f"hyperlink target is not http(s) in {name} ({target!r})")
     return _uniq(errs), _uniq(warns)
 
 
@@ -283,14 +460,17 @@ def check_file(path, theme):
             if name not in families and name not in GENERIC_FAMILIES:
                 errs.append(f"font-family '{name}' is not declared in theme '{theme['name']}'")
 
-    for m in re.finditer(r"\ssrc\s*=\s*(?:\"([^\"]*)\"|'([^']*)')", src):
-        url = m.group(1) or m.group(2) or ""
-        if _is_external(url):
-            errs.append(f"external resource in src= ({url})")
-    for m in re.finditer(r"<([a-zA-Z][\w-]*)[^>]*?\shref\s*=\s*(?:\"([^\"]*)\"|'([^']*)')", src):
-        tag, url = m.group(1).lower(), (m.group(2) or m.group(3) or "")
-        if tag != "a" and _is_external(url):
-            errs.append(f"external resource in <{tag}> href= ({url})")
+    scan = _check_injected_markup(src, errs)
+    for tag, attrs in _iter_open_tags(scan):
+        for a in URL_ATTR_RE.finditer(attrs):
+            attr = a.group(1).lower()
+            url = a.group(2) if a.group(2) is not None else (
+                a.group(3) if a.group(3) is not None else (a.group(4) or ""))
+            if attr == "src":
+                if _is_external(url):
+                    errs.append(f"external resource in src= ({url})")
+            elif tag != "a" and _is_external(url):
+                errs.append(f"external resource in <{tag}> href= ({url})")
     for m in re.finditer(r"@import\s+(?:\"([^\"]+)\"|'([^']+)')", stripped):
         url = m.group(1) or m.group(2)
         if _is_external(url):

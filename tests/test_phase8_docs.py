@@ -1,18 +1,20 @@
-"""Phase 8 docs wiring (story 2.3 + story 3.2 + story 4.5 + story 5.4 + bug
-2): SKILL.md and reference/*.md carry no mention of the retired upstream HTML
-template (named below only as a concatenation so the repo-wide grep stays
-clean); SKILL.md lists render_report.py, render_deck.py, render_pptx.py, and
-check_theme.py, and still names the PDF output; every scripts/*.py path named
-in SKILL.md, the reference docs, and README.md exists on disk. The frontmatter
-description advertises every output (report, HTML slide deck, PowerPoint
-.pptx, PDF) plus the deck trigger phrases within 1024 characters, keeping the
-research triggers and the "not for simple lookups" boundary. SKILL.md carries
-an Outputs section and a deck section, links the authoring guide
-(reference/slide-decks.md) from both the Outputs section and the Decision
-Tree, and nothing in it implies decks come only from a research run. The
-guide documents every layout in the deck_spec schema's layout set (derived
-from the schema, so a new layout without a guide section fails), and every
-JSON example block in the guide parses and validates with deck_spec.py.
+"""Phase 8 docs wiring (story 2.3 + story 3.2 + story 3.4 + story 4.5 +
+story 5.4 + bug 2): SKILL.md and reference/*.md carry no mention of the
+retired upstream HTML template (named below only as a concatenation so the
+repo-wide grep stays clean); SKILL.md lists render_report.py,
+render_deck.py, render_pptx.py, and check_theme.py, and still names the PDF
+output without calling it "auto-opened", linking the one Phase 8 gate chain
+(story 3.4); every scripts/*.py path named in SKILL.md, the reference docs,
+and README.md exists on disk. The frontmatter description advertises every
+output (report, HTML slide deck, PowerPoint .pptx, PDF) plus the deck
+trigger phrases within 1024 characters, keeping the research triggers and
+the "not for simple lookups" boundary. SKILL.md carries an Outputs section
+and a deck section, links the authoring guide (reference/slide-decks.md)
+from both the Outputs section and the Decision Tree, and nothing in it
+implies decks come only from a research run. The guide documents every
+layout in the deck_spec schema's layout set (derived from the schema, so a
+new layout without a guide section fails), and every JSON example block in
+the guide parses and validates with deck_spec.py.
 Read-only: this test writes nothing."""
 import json
 import os
@@ -83,7 +85,9 @@ def test_skill_lists_phase8_scripts():
 
 def test_skill_still_offers_pdf_output():
     s = read(SKILL)
-    assert "PDF (professional print, auto-opened)" in s
+    assert "PDF" in s                      # SKILL.md still names the PDF output
+    assert "auto-opened" not in s          # F19: no script opens it
+    assert "quality-gates.md#phase-8-gate-chain" in s  # links the one chain
 
 
 def test_script_paths_exist():

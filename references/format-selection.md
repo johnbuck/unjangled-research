@@ -105,5 +105,6 @@ Example code or configuration here
 
 ### Validation wiring
 After selecting a format and writing the report, validate against THAT format:
-`python scripts/validate_report.py --report [path] --format [chosen-format]`
-Each format has its own required sections, word targets, and source floors (table in `reference/quality-gates.md`). The readability gate (`readability_check.py`, exit 0 required) applies to every format unchanged.
+`python3 scripts/validate_report.py --report [path] --format [chosen-format] --manifest [run_dir]/run_manifest.json`
+(always pass `--manifest`: without it the contested-facets gate is skipped).
+Each format has its own required sections, word targets, and source floors (table in `reference/quality-gates.md`). The readability gate (`python3 scripts/readability_check.py [report]`) applies to every format unchanged: exit 0 is a clean pass, exit 2 warnings only — still a pass; exit 1 fails, and exit 3 (textstat unavailable) also blocks delivery. The full Phase 8 gate chain runs in the order given in `reference/quality-gates.md#phase-8-gate-chain`.

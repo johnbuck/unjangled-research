@@ -145,6 +145,19 @@
         },
         "additionalProperties": false
       }
+    },
+    "bib_notes": {
+      "description": "Optional. Authored non-entry lines of the bibliography section (a 'verified on' line, a '### Primary sources' label). Unnumbered, so a note never takes a citation number. 'after' counts the sources rows that precede the note, so the renderer can place it in order.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "after"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "after": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": false

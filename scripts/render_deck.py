@@ -17,6 +17,9 @@ byte for byte.
     python3 render_deck.py --report report.md [--manifest run_manifest.json] \
         [--format comprehensive-report] [--theme neutral] --out deck.html
     python3 render_deck.py --slides deck.json [--theme neutral] --out deck.html
+
+A theme that fails to load (missing keys, an asset path escaping its
+folder) exits 1 with a single `ERROR: <message>` line on stderr.
 """
 import argparse
 import json
@@ -28,6 +31,7 @@ from build_render_model import build_model
 from deck_spec import DeckError, load_deck
 from render_lib import deck, cover_slide, slide_head, slide_foot, esc
 from slide_plan import CONTENT_SLIDE_CAP, FORMAT_DISPLAY, plan_slides, stat_parts
+from theme import load_theme
 
 EMPTY_MAIN_FALLBACK = '<p class="fine">Detailed in the full report.</p>'
 
@@ -48,8 +52,11 @@ def _bullets_html(points, start_delay=2):
 def _evidence_html(refs):
     if not refs:
         return ""
+    # refs are escaped: a model passed with --model is trusted for
+    # structure, but an unescaped insertion would let any hand-edited
+    # ref value go live in the deck (2.1 review)
     return ('<p class="fine" data-a style="--d:5">Evidence: '
-            + " ".join(f"[{r}]" for r in refs) + "</p>")
+            + " ".join(f"[{esc(r)}]" for r in refs) + "</p>")
 
 
 def _statement_body(spec, deck_name, theme):
@@ -59,7 +66,8 @@ def _statement_body(spec, deck_name, theme):
         small = f"<small>{esc(suffix)}</small>" if suffix else ""
         label = esc(stat["label"])
         if stat.get("ref") is not None:
-            label += f" [{stat['ref']}]"
+            # escaped, not trusted: --model input may be hand-edited
+            label += f" [{esc(stat['ref'])}]"
         tiles.append(
             f'<article class="stat-tile" data-a style="--d:{i + 2}">'
             f'<p class="stat-num">{esc(num)}{small}</p>'
@@ -423,6 +431,14 @@ Examples:
                     help="theme name under themes/ or a theme folder path (default: neutral)")
     ap.add_argument("--out", "-o", required=True, help="write the HTML deck here")
     args = ap.parse_args()
+
+    # a bad theme (missing keys, an asset path escaping its folder) fails
+    # with one clean ERROR line before anything renders
+    try:
+        load_theme(args.theme)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     if args.model:
         if args.manifest or args.format:

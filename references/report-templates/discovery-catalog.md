@@ -40,7 +40,7 @@ reason.]
 
 | Candidate | Registry | Popularity (source, date) | Last activity | License | Status | Tier |
 |---|---|---|---|---|---|---|
-[One row per candidate. Popularity cell: "340 stars (GitHub, 2026-10-06)".
+[One row per candidate. Popularity cell: "340 stars (GitHub, 2026-10-06) [N]".
 Blank cells are forbidden — unknown = "unverified" and caps at Watch.]
 
 ## Model Addenda
@@ -55,8 +55,8 @@ questions.]
 ### [Candidate name]
 
 [2-4 sentences: what it is, popularity evidence with numbers, maintenance
-status, and the honest downside. Adopt candidates must cite two independent
-registries.]
+status, and the honest downside, each number cited [N]. Adopt candidates
+must cite two independent registries.]
 
 ## Sources Consulted
 
@@ -66,7 +66,8 @@ rejected as evidence (listicles, affiliate sites). This is the audit trail
 proving curated-list-first ran.]
 
 ## Bibliography
-[1] ... numbered entries per references/citations.md
+[1] Author/Org (Year). "Title". https://example.com/source
+[2] Author/Org (Year). "Title". https://example.com/source
 ```
 
 ## Rendering notes
@@ -77,3 +78,5 @@ proving curated-list-first ran.]
   marked unverified.
 - projects.jsonl carries the same numbers as the matrix — render the matrix
   from it, never the reverse.
+- Bibliography entries follow references/citations.md: one numbered entry
+  per line in first-citation order, every entry cited in the body.

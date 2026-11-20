@@ -6,7 +6,9 @@ round-trips — rendering the export is byte-identical to rendering the same
 report through --report (neutral and alt, formats fixture, and the
 facet-matching manifest fixture); every layout renders with its content
 text present under both themes; and check_theme.py exits 0 on the
-all-layouts deck under both themes; the --check CLI prints
+all-layouts deck under both themes; a source url that is not http(s) —
+file://, UNC, javascript:, data: — fails validation naming the slide
+and field; the --check CLI prints
 'valid: N slides' or one error line per faulty slide, and writes no file."""
 import json
 import os
@@ -389,6 +391,59 @@ def test_check_cli_reports_valid_and_every_error():
         assert not os.path.exists(os.path.join(d, "nope.json"))
 
 
+def test_source_urls_must_be_http_s():
+    """A non-null sources url must start with http:// or https:// (any
+    case): file://, a UNC path (\\\\host\\share), javascript:, data:,
+    scheme-relative, whitespace-led and control-character urls are rejected
+    naming the slide and field; http, https, HTTPS, and null stay valid."""
+    sources_slide = 11   # the all_layouts fixture's sources slide (index)
+
+    def first_error(url):
+        deck = load_deck(FIXTURE_DECK)
+        deck["slides"][sources_slide]["sources"][0]["url"] = url
+        try:
+            validate_deck(deck)
+        except DeckError as exc:
+            return str(exc)
+        raise AssertionError(f"url passed validation: {url!r}")
+
+    for url in ("file:///etc/hosts", "\\\\host\\share\\data.json",
+                "javascript:alert(1)", "data:text/html,hello",
+                "ftp://example.com/x", "example.com/x", "//example.com/x",
+                " javascript:alert(1)", "java\tscript:alert(1)",
+                "JavaScript:alert(1)", "FILE:///etc/hosts", "\thttps://x.example"):
+        message = first_error(url)
+        assert re.search(r"slide 12 \(sources\)\.sources\[0\]\.url: "
+                         r"must start with http:// or https://", message), (url, message)
+
+    # an http(s) url with a control character inside is rejected too
+    for url in ("https://x.example/\njavascript:alert(1)", "http://x.example/\x00"):
+        message = first_error(url)
+        assert re.search(r"slide 12 \(sources\)\.sources\[0\]\.url: "
+                         r"must not contain control characters", message), (url, message)
+
+    # the scheme compares case-insensitively (RFC 3986 3.1)
+    for url in ("http://example.com/a", "https://example.com/b",
+                "HTTPS://EXAMPLE.COM/c", "Http://example.com/d"):
+        deck = load_deck(FIXTURE_DECK)
+        deck["slides"][sources_slide]["sources"][0]["url"] = url
+        validate_deck(deck)
+    validate_deck(load_deck(FIXTURE_DECK))   # fixture's null urls stay valid
+
+    # --check CLI rejects a file holding such a url
+    with tempfile.TemporaryDirectory() as d:
+        for url in ("file:///etc/hosts", "\\\\host\\share\\data.json"):
+            deck = load_deck(FIXTURE_DECK)
+            deck["slides"][sources_slide]["sources"][0]["url"] = url
+            path = os.path.join(d, "bad-url.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(deck, f)
+            r = _run([os.path.join(SCRIPTS, "deck_spec.py"), "--check", path])
+            assert r.returncode == 1, (url, r.stdout, r.stderr)
+            assert "slide 12 (sources).sources[0].url: must start with " \
+                   "http:// or https://" in r.stderr, (url, r.stderr)
+
+
 if __name__ == "__main__":
     test_schema_matches_validator()
     test_all_layouts_fixture_valid()
@@ -400,4 +455,5 @@ if __name__ == "__main__":
     test_check_theme_all_layouts_both_themes()
     test_render_cli_rejects_invalid_slide_list()
     test_check_cli_reports_valid_and_every_error()
-    print("all 10 deck-spec tests ran and passed")
+    test_source_urls_must_be_http_s()
+    print("all 11 deck-spec tests ran and passed")

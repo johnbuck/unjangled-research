@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Theme QA fixture — escaped markup text only</title>
+<style>
+:root{--rf-surface:#FFFFFF;--rf-ink:#262626;--rf-type:"Lato",sans-serif}
+body{margin:0;background:var(--rf-surface);color:var(--rf-ink);font-family:var(--rf-type)}
+</style>
+</head>
+<body><main><p>Sample fixture content.</p>
+<p>A escaped script bullet reads &lt;script&gt;alert('x')&lt;/script&gt; and stays text.</p>
+<p>An escaped image bullet reads &lt;img onerror=x&gt; and stays text.</p>
+<p>onerror= and onclick= as bare words in prose are not attributes.</p>
+<p title="<script>alert(1)</script>">Markup inside a quoted attribute value is inert.</p>
+<p title=onerror=x>An unquoted attribute value that reads onerror=x is a value, not a handler.</p>
+<a href=/search?q=online=1>An unquoted query value holding online=1 is not a handler.</a>
+<p title="javascript:alert(1) in a title is text, not a URL">A javascript: scheme named in a non-URL attribute is inert.</p>
+<img src="data:image/png;base64,iVBORw0KGgo=" alt="An image data: URL is inert">
+<p data-note="javascript:x" data-src="data:text/html,x">data-* attributes are not URL attributes.</p>
+</main></body></html>

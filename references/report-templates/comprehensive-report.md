@@ -56,11 +56,15 @@
 
 ## Contested Facets & Perspectives
 
-[ONLY when run_manifest.contested_facets is non-empty. One subsection per
-listed facet: each side's strongest case, sourced from its own flagship
-documents, symmetric depth and citation density. Verdicts only when the
-user's request asks for a choice — steelman first, then weigh, then state
-what evidence would change the call. Omit entirely when the list is empty.]
+[ONLY when run_manifest.contested_facets is non-empty. One `###`
+subsection per listed facet, named after the facet itself or labelled
+`### Facet N: ...` (N = the facet's 1-based position in the manifest
+list) — validate_report.py enforces this and fails an uncovered facet.
+Each subsection holds every side's strongest case, each sourced from its own
+flagship documents, symmetric depth and citation density. Verdicts only
+when the user's request asks for a choice — steelman first, then weigh,
+then state what evidence would change the call. Omit the section
+entirely when the list is empty.]
 
 ## Data & Evidence
 
@@ -96,6 +100,6 @@ what evidence would change the call. Omit entirely when the list is empty.]
 - [Unanswered questions for future research]
 
 ## Bibliography
-- [Source Title](url)
-- [Source Title](url)
+[1] Author/Org (Year). "Title". https://example.com/source
+[2] Author/Org (Year). "Title". https://example.com/source
 ```

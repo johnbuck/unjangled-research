@@ -12,10 +12,10 @@ import re
 import sys
 from pathlib import Path
 
+from bibliography import parse_entries, reader_facing_text, split_bibliography
 from md_to_html import convert_markdown_to_html, _convert_content_section
 from validate_report import FORMATS, DEFAULT_FORMAT
 
-BIBLIOGRAPHY_HEADINGS = {"bibliography", "sources"}
 SUMMARY_FALLBACKS = ("Summary", "Executive Summary", "Overview")
 FINDINGS_SECTIONS = {
     "comprehensive-report": ("Key Findings", "Findings", "Main Analysis"),
@@ -74,8 +74,19 @@ CAMP_PATTERNS = [
 ]
 
 
+# A markdown link, in the same grammar md_to_html's converter rewrites:
+# no pipe in text or target (a link must never straddle a table cell),
+# at most one level of balanced parentheses in the target. Both paths
+# rewrite the same set of links.
+_MD_LINK_RE = re.compile(r"\[([^\]|]+)\]\(((?:[^()\s|]|\([^()\s|]*\))+)\)")
+
+
 def strip_md(s):
-    s = re.sub(r"\[([^\]]+)\]\((?:[^)]+)\)", r"\1", s)
+    """Markdown stripped for plain-text contexts (summaries, findings,
+    bullets, stat captions): a link of any scheme keeps its URL beside
+    its text — 'text (URL)' — instead of collapsing to bare text and
+    losing the URL (E2-R3)."""
+    s = _MD_LINK_RE.sub(lambda m: f"{m.group(1)} ({m.group(2)})", s)
     s = re.sub(r"\*\*(.+?)\*\*", r"\1", s)
     s = re.sub(r"\*(.+?)\*", r"\1", s)
     s = re.sub(r"`([^`]+)`", r"\1", s)
@@ -98,38 +109,33 @@ def norm_heading(h):
 
 
 def parse_report(text):
+    """Split body and bibliography through the shared helper
+    (bibliography.py: exact case-sensitive '## Bibliography'/'## Sources'
+    outside code fences), then scan the body for preamble and sections."""
+    _, bib_section = split_bibliography(text)
+    body = reader_facing_text(text)
     sections = []
-    bib_lines = []
     preamble = []
     current = None
-    in_bib = False
     in_fence = False
-    for line in text.splitlines():
+    for line in body.splitlines():
         stripped = line.strip()
         if stripped.startswith("```") or stripped.startswith("~~~"):
             in_fence = not in_fence
         m = None if in_fence else re.match(r"^(#{2,3})\s+(.*)$", line)
         if m:
             level = len(m.group(1))
-            heading = m.group(2).strip()
-            if level == 2 and heading.lower() in BIBLIOGRAPHY_HEADINGS:
-                in_bib = True
-                current = None
-                continue
-            in_bib = False
-            current = {"heading": heading, "level": level, "lines": []}
+            current = {"heading": m.group(2).strip(), "level": level, "lines": []}
             sections.append(current)
             continue
-        if in_bib:
-            bib_lines.append(line)
-        elif current is not None:
+        if current is not None:
             current["lines"].append(line)
         else:
             preamble.append(line)
     return {
         "preamble": preamble,
         "sections": sections,
-        "bib_body": "\n".join(bib_lines),
+        "bib_body": bib_section or "",
     }
 
 
@@ -176,17 +182,19 @@ def infer_format(parsed):
 
 
 def build_sections(text, parsed):
+    from html import unescape
+
     content_html, _ = convert_markdown_to_html(text)
     lines = content_html.split("\n")
     markers = []
     for i, line in enumerate(lines):
         m = re.search(r'<h2 class="section-title">(.*?)</h2>', line)
         if '<h2 class="section-title">' in line and m:
-            markers.append((2, norm_heading(re.sub(r"<[^>]+>", "", m.group(1))), i))
+            markers.append((2, norm_heading(unescape(re.sub(r"<[^>]+>", "", m.group(1)))), i))
             continue
         m = re.search(r'<h3 class="subsection-title">(.*?)</h3>', line)
         if '<h3 class="subsection-title">' in line and m:
-            markers.append((3, norm_heading(re.sub(r"<[^>]+>", "", m.group(1))), i))
+            markers.append((3, norm_heading(unescape(re.sub(r"<[^>]+>", "", m.group(1)))), i))
     fragments = {}
     for idx, (level, heading, start) in enumerate(markers):
         end = markers[idx + 1][2] if idx + 1 < len(markers) else len(lines)
@@ -737,19 +745,35 @@ def _author_like(seg):
     return bool(re.match(r"^[A-Z][\w'’\-]+,\s*[A-Z]\.?$", seg))
 
 
+# The quoted title of 'Author (Year). "Title". URL' (the export format)
+# and of the older '"Title". Publisher.' form: it opens at the start of a
+# '. '-separated segment and runs to the LAST '"' that ends a segment, so
+# quotes and '. ' inside the title ('The "A2A" survey', 'the 3 p.m.
+# question', 'Intro to "X". Part 2') stay in it.
+_QUOTED_TITLE_RE = re.compile(r'(?:^|\.\s+)"(.+)"(?=\.?\s*$|\.\s)')
+
+
+def _bib_segments(text):
+    """'. '-separated segments with standalone year segments dropped."""
+    return [
+        s.strip()
+        for s in re.split(r"\.\s+", text.strip().rstrip("."))
+        if s.strip() and not re.fullmatch(r"\((?:18|19|20)\d{2}\)", s.strip())
+    ]
+
+
 def _parse_bib_numbered(text):
     url_m = re.search(r"(https?://\S+)", text)
     url = url_m.group(1).rstrip(".,);") if url_m else None
     text2 = text.replace(url_m.group(1), " ", 1) if url_m else text
-    segs = [
-        s.strip()
-        for s in re.split(r"\.\s+", text2.strip().rstrip("."))
-        if s.strip() and not re.fullmatch(r"\((?:18|19|20)\d{2}\)", s.strip())
-    ]
-    quoted = next((s for s in segs if re.fullmatch(r'"(.+)"', s)), None)
-    if quoted:
-        title = quoted[1:-1]
-        rest = [s for s in segs if s != quoted and not _author_like(s)]
+    qm = _QUOTED_TITLE_RE.search(text2.strip())
+    segs = _bib_segments(text2)
+    if qm:
+        # Everything before the quoted title is author/year material and
+        # never a publisher; only segments after the title can hold one.
+        title = qm.group(1)
+        after = text2.strip()[qm.end():].lstrip(".")
+        rest = [s for s in _bib_segments(after) if not _author_like(s)]
         publisher = rest[-1] if rest else None
     elif len(segs) >= 2 and _author_like(segs[0]):
         title = segs[1]
@@ -765,26 +789,52 @@ def _parse_bib_numbered(text):
     return {"title": title, "url": url, "publisher": publisher}
 
 
-def build_sources(bib_body):
+# A markdown link entry: '- [Title](https://…)' (the pre-export bib form).
+_BIB_LINK_RE = re.compile(r"^[-*]?\s*\[([^\]]+)\]\((https?://[^)]+)\)\s*$")
+# A thematic rule: structure, not authored words.
+_BIB_RULE_RE = re.compile(r"-{3,}|\*{3,}|_{3,}")
+
+
+def build_bibliography(bib_body):
+    """Split the bibliography section into ``(sources, notes)``.
+
+    Sources: '[N]' entries via the shared helper's entry rule, and markdown
+    link entries numbered past the highest '[N]' (so they never collide with
+    one). Notes: every other authored line (a 'verified on' line, a
+    '### Primary sources' label), kept unnumbered as
+    ``{"text", "after"}`` where ``after`` counts the sources rows before
+    it, so the renderer can place it in order. A note never takes a number:
+    numbering one would shift or shadow the [N] that body citations point
+    at. Only blank lines and thematic rules are dropped."""
+    next_auto = max((n for n, _ in parse_entries(bib_body)), default=0) + 1
     sources = []
-    auto_n = 0
+    notes = []
     for line in bib_body.splitlines():
         s = line.strip()
-        if not s or s == "---":
+        if not s or _BIB_RULE_RE.fullmatch(s):
             continue
-        m = re.match(r"^[-*]?\s*\[(\d+)\]\s*(.+)$", s)
-        if m:
-            n = int(m.group(1))
-            entry = _parse_bib_numbered(m.group(2))
-        else:
-            lm = re.match(r"^[-*]?\s*\[([^\]]+)\]\((https?://[^)]+)\)\s*$", s)
-            if not lm:
-                continue
-            auto_n += 1
-            n = auto_n
-            entry = {"title": strip_md(lm.group(1)), "url": lm.group(2), "publisher": None}
-        sources.append({"n": n, **entry})
-    return sources
+        parsed = parse_entries(s)
+        if parsed:
+            n, rest = parsed[0]
+            sources.append({"n": n, **_parse_bib_numbered(rest)})
+            continue
+        lm = _BIB_LINK_RE.match(s)
+        if lm:
+            sources.append({
+                "n": next_auto,
+                "title": strip_md(lm.group(1)),
+                "url": lm.group(2),
+                "publisher": None,
+            })
+            next_auto += 1
+            continue
+        notes.append({"text": re.sub(r"^#{1,6}\s+", "", s), "after": len(sources)})
+    return sources, notes
+
+
+def build_sources(bib_body):
+    """The numbered sources rows of the bibliography section."""
+    return build_bibliography(bib_body)[0]
 
 
 def build_model(report_text, manifest=None, fmt=None):
@@ -803,7 +853,8 @@ def build_model(report_text, manifest=None, fmt=None):
         if isinstance(started, str) and started[:4].isdigit():
             date = started[:10]
     sections = build_sections(report_text, parsed)
-    return {
+    sources, bib_notes = build_bibliography(parsed["bib_body"])
+    model = {
         "title": title,
         "subtitle": subtitle,
         "date": date,
@@ -813,8 +864,11 @@ def build_model(report_text, manifest=None, fmt=None):
         "sections": sections,
         "findings": build_findings(parsed, fmt),
         "contested_facets": build_contested_facets(manifest, parsed, sections),
-        "sources": build_sources(parsed["bib_body"]),
+        "sources": sources,
     }
+    if bib_notes:
+        model["bib_notes"] = bib_notes
+    return model
 
 
 def main():
@@ -823,8 +877,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python build_render_model.py --report report.md
-  python build_render_model.py --report report.md --manifest run_manifest.json --out render_model.json
+  python3 build_render_model.py --report report.md
+  python3 build_render_model.py --report report.md --manifest run_manifest.json --out render_model.json
         """,
     )
     parser.add_argument("--report", "-r", required=True, help="Path to report markdown")

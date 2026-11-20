@@ -34,15 +34,18 @@
 
 ### Finding 1: [Clear headline]
 [Details and supporting evidence]
-[N] Author/Org (Year). Title. url
+
+Source: [N]
 
 ### Finding 2: [Clear headline]
 [Details and supporting evidence]
-[N] Author/Org (Year). Title. url
+
+Source: [N]
 
 ### Finding 3: [Clear headline]
 [Details and supporting evidence]
-[N] Author/Org (Year). Title. url
+
+Source: [N]
 
 ## Detailed Analysis
 
@@ -64,7 +67,7 @@
 
 ## Bibliography
 
-- [Source Title](url)
-- [Source Title](url)
-- [Source Title](url)
+[1] Author/Org (Year). "Title". https://example.com/source
+[2] Author/Org (Year). "Title". https://example.com/source
+[3] Author/Org (Year). "Title". https://example.com/source
 ```

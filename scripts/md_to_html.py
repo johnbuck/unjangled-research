@@ -1,12 +1,27 @@
 #!/usr/bin/env python3
 """
-Markdown to HTML converter for research reports
-Properly converts markdown sections to HTML while preserving structure and formatting
+Markdown to HTML converter for research reports: converts markdown
+sections to HTML while preserving structure and formatting. Report text
+is html-escaped before any markdown rule runs, so the only live markup
+in the output is the tags this converter generates (E2-R1); the
+bibliography boundary and entries come from the shared helper
+(bibliography.py), and a prose link renders as an https anchor or as
+'text (URL)' plain text (E2-R3).
+
+    python3 md_to_html.py <markdown_file>    # demo: prints a truncated conversion
 """
 
 import re
+import sys
+from html import escape
 from typing import Tuple
 from pathlib import Path
+
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+from bibliography import parse_entries, reader_facing_text, split_bibliography
 
 
 def convert_markdown_to_html(markdown_text: str) -> Tuple[str, str]:
@@ -19,20 +34,9 @@ def convert_markdown_to_html(markdown_text: str) -> Tuple[str, str]:
     Returns:
         Tuple of (content_html, bibliography_html)
     """
-    # Split content and bibliography — but preserve any sections AFTER bibliography
-    parts = re.split(r'## (?:Bibliography|Sources)\b', markdown_text, maxsplit=1)
-    content_md = parts[0]
-    bibliography_md = ""
-    if len(parts) > 1:
-        after_bib = parts[1]
-        # Find the next section heading after the bibliography entries
-        next_section = after_bib.find('\n## ')
-        if next_section > 0:
-            bibliography_md = after_bib[:next_section]
-            post_bib_md = after_bib[next_section:]
-            content_md = parts[0] + '\n' + post_bib_md
-        else:
-            bibliography_md = after_bib
+    _, bib_section = split_bibliography(markdown_text)
+    content_md = reader_facing_text(markdown_text)
+    bibliography_md = bib_section or ""
 
     # Convert content (everything except bibliography)
     content_html = _convert_content_section(content_md)
@@ -44,8 +48,12 @@ def convert_markdown_to_html(markdown_text: str) -> Tuple[str, str]:
 
 
 def _convert_content_section(markdown: str) -> str:
-    """Convert main content sections to HTML"""
-    html = markdown
+    """Convert main content sections to HTML.
+
+    Report text is html-escaped before any markdown rule runs, so the
+    only live markup in the output is the tags this converter generates.
+    """
+    html = escape(markdown)
 
     # Remove title and front matter (first ## heading is handled separately)
     lines = html.split('\n')
@@ -88,14 +96,11 @@ def _convert_content_section(markdown: str) -> str:
         flags=re.MULTILINE
     )
 
-    # Convert **bold** text
-    html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
-
-    # Convert *italic* text
-    html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
-
-    # Convert inline code `code`
-    html = re.sub(r'`(.+?)`', r'<code>\1</code>', html)
+    # Inline rules: `code` spans, prose links, **bold**, *italic*.
+    # Code spans and link targets are held out of the later rules, so a
+    # link inside a code span stays literal and a `*` in a URL is kept
+    # (E2-R3).
+    html = _convert_inline(html)
 
     # Convert unordered lists
     html = _convert_lists(html)
@@ -126,27 +131,87 @@ def _convert_content_section(markdown: str) -> str:
 
 
 def _convert_bibliography_section(markdown: str) -> str:
-    """Convert bibliography section to HTML"""
+    """Convert bibliography section to HTML.
+
+    Entries are found through the shared bibliography helper and their
+    text escaped; the old `Title - URL` anchor shape is kept. Any other
+    authored line in the section (a note, a `### Primary sources` label,
+    a `- [Title](url)` link entry) is kept as an escaped paragraph, so no
+    authored word is dropped; only blank lines and thematic rules are.
+    """
     if not markdown.strip():
         return ""
 
-    html = markdown
+    entries = []
+    for line in markdown.splitlines():
+        parsed = parse_entries(line)
+        if not parsed:
+            stripped = line.strip()
+            if stripped and not re.fullmatch(r"(?:-{3,}|\*{3,}|_{3,})", stripped):
+                entries.append(f'<p class="bib-note">{escape(stripped)}</p>')
+            continue
+        n, rest = parsed[0]
+        text = escape(rest)
+        m = re.match(r"(.+?)\s*-\s*(https?://[^\s\)]+)$", text)
+        if m:
+            entries.append(
+                f'<div class="bib-entry"><span class="bib-number">[{n}]</span> '
+                f'<a href="{m.group(2)}" target="_blank">{m.group(1)}</a></div>'
+            )
+        else:
+            entries.append(
+                f'<div class="bib-entry"><span class="bib-number">[{n}]</span> {text}</div>'
+            )
 
-    # Convert each [N] citation to a proper bibliography entry
-    # Look for patterns like [1] Title - URL
-    html = re.sub(
-        r'\[(\d+)\]\s*(.+?)\s*-\s*(https?://[^\s\)]+)',
-        r'<div class="bib-entry"><span class="bib-number">[\1]</span> <a href="\3" target="_blank">\2</a></div>',
-        html
-    )
+    html = "\n".join(entries)
+    html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html)
+    return f'<div class="bibliography-content">{html}</div>'
 
-    # Convert any remaining **bold** sections
+
+_CODE_SPAN_RE = re.compile(r'`(.+?)`')
+# Link target: no whitespace or pipe, with at most one level of balanced
+# parentheses (`…/Foo_(bar)`); no held placeholder, so a code span inside
+# a target leaves the link literal.
+_LINK_RE = re.compile(
+    r"\[([^\]|]+)\]\(((?:[^()\s|<]|\([^()\s|<]*\))+)\)"
+)
+# Placeholder for a held fragment. '<' never survives the escape pass as
+# authored text, so only this converter can produce one.
+_HOLD_RE = re.compile(r"<\x00(\d+)>")
+
+
+def _convert_inline(html: str) -> str:
+    """Inline rules on already-escaped text: code spans, then prose
+    links, then bold and italic.
+
+    A code span is held whole, so its text (a link, `*`) stays literal.
+    Only an https:// target becomes an anchor (scheme case-insensitive,
+    href keeps the escaped form it arrived in, so it is never escaped
+    twice and no quote can break out of the attribute). Every other
+    target — http:, javascript:, file:, data:, relative — renders as
+    plain text with the URL in round brackets after it: no anchor, no raw
+    markdown (E2-R3). Targets are held, so bold and italic never rewrite
+    a URL. Text and URL never contain a pipe, so a link can never
+    straddle the cell boundary of a pipe-delimited table row.
+    """
+    held = []
+
+    def hold(fragment):
+        held.append(fragment)
+        return f"<\x00{len(held) - 1}>"
+
+    html = _CODE_SPAN_RE.sub(lambda m: hold(f"<code>{m.group(1)}</code>"), html)
+
+    def link(m):
+        text, target = m.group(1), m.group(2)
+        if target.lower().startswith("https://"):
+            return f'<a href="{hold(target)}">{text}</a>'
+        return f"{text} ({hold(target)})"
+
+    html = _LINK_RE.sub(link, html)
     html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
-
-    # Wrap in bibliography content div
-    html = f'<div class="bibliography-content">{html}</div>'
-
-    return html
+    html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
+    return _HOLD_RE.sub(lambda m: held[int(m.group(1))], html)
 
 
 def _convert_lists(html: str) -> str:
@@ -206,30 +271,58 @@ def _convert_lists(html: str) -> str:
     return '\n'.join(result)
 
 
+_SEPARATOR_CELL_RE = re.compile(r":?-+:?")
+
+
+def _is_separator_row(cells, header_cell_count):
+    """True when the row is exactly the header's width and every cell is
+    a strict separator cell: dashes with optional leading/trailing
+    colons (`---`, `:--`, `--:`, `:--:`). A dash row of any other width
+    is a data row (GFM delimiter rows match the header cell count)."""
+    return (bool(cells) and len(cells) == header_cell_count
+            and all(_SEPARATOR_CELL_RE.fullmatch(c) for c in cells))
+
+
 def _convert_tables(html: str) -> str:
-    """Convert markdown tables to HTML tables"""
+    """Convert markdown tables to HTML tables.
+
+    Only the row directly after the header can be the separator, and
+    only when it matches the strict separator pattern at the header's
+    width. Data rows that contain `---` are kept as data rows (E2-R3).
+    A row's trailing pipe is optional: the empty part it would leave is
+    dropped only when the row ends with `|`, so `| a | b` keeps its last
+    cell — and a separator written without its trailing pipe still has
+    the header's width and separates."""
     lines = html.split('\n')
     result = []
     in_table = False
+    next_row_is_separator = False
+    header_cell_count = 0
 
     for i, line in enumerate(lines):
-        if '|' in line and line.strip().startswith('|'):
+        stripped_row = line.strip()
+        if '|' in stripped_row and stripped_row.startswith('|'):
+            parts = line.split('|')[1:]
+            if stripped_row.endswith('|'):
+                parts = parts[:-1]
+            cells = [cell.strip() for cell in parts]
             if not in_table:
                 result.append('<table>')
                 in_table = True
                 # This is the header row
-                cells = [cell.strip() for cell in line.split('|')[1:-1]]
                 result.append('<thead><tr>')
                 for cell in cells:
                     result.append(f'<th>{cell}</th>')
                 result.append('</tr></thead>')
                 result.append('<tbody>')
-            elif '---' in line:
-                # Skip separator row
-                continue
+                header_cell_count = len(cells)
+                next_row_is_separator = True
+            elif next_row_is_separator and _is_separator_row(cells, header_cell_count):
+                # Drop the one real separator row
+                next_row_is_separator = False
             else:
+                next_row_is_separator = False
                 # Data row
-                cells = [cell.strip() for cell in line.split('|')[1:-1]]
                 result.append('<tr>')
                 for cell in cells:
                     result.append(f'<td>{cell}</td>')
@@ -315,11 +408,11 @@ def _close_sections(html: str) -> str:
 
 
 def main():
-    """Test the converter with a sample markdown file"""
+    """Demo the converter with a sample markdown file."""
     import sys
 
     if len(sys.argv) < 2:
-        print("Usage: python md_to_html.py <markdown_file>")
+        print("Usage: python3 md_to_html.py <markdown_file>")
         sys.exit(1)
 
     md_file = Path(sys.argv[1])

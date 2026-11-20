@@ -14,6 +14,9 @@ from build_render_model import (  # noqa: E402
     CONNECTOR_WORDS,
     _stat_label,
     build_model,
+    build_bibliography,
+    build_sources,
+    parse_report,
     sentences,
     strip_md,
 )
@@ -317,6 +320,227 @@ def test_sections_html_converted():
             assert "<" in section["html"], (path, section["heading"])
 
 
+BIB_RULE_REPORT = os.path.join(RENDER_DIR, "bibliography_rule_report.md")
+
+
+def test_lowercase_sources_heading_stays_body_section():
+    """The helper's heading rule is case-sensitive: '## sources' is a body
+    section and nothing from it reaches model['sources'] (fails on
+    4ce5be8, where BIBLIOGRAPHY_HEADINGS matched case-insensitively)."""
+    model = build(BIB_RULE_REPORT)
+    sec = next(s for s in model["sections"] if s["heading"] == "sources")
+    assert "stays a body section under the case-sensitive rule" in sec["html"]
+    joined = " ".join(s["title"] for s in model["sources"])
+    assert "stays a body section" not in joined
+    # Alone in a report, it is still only a section, never a bibliography.
+    model = build_model(
+        "# T\n\n## sources\n\nBody of the sources section [1].\n"
+    )
+    assert [s["heading"] for s in model["sections"]] == ["sources"]
+    assert model["sources"] == []
+
+
+def test_exact_capitalised_sources_heading_starts_bibliography():
+    report = (
+        "# T\n\n## Body\n\nText [1].\n\n"
+        "## Sources\n\n[1] A (2024). \"S\". https://e.com/s\n"
+    )
+    model = build_model(report)
+    assert [s["heading"] for s in model["sections"]] == ["Body"]
+    assert [s["n"] for s in model["sources"]] == [1]
+
+
+def test_fenced_bibliography_heading_does_not_start_bibliography():
+    """A '## Bibliography' line inside a code fence is body content: it
+    neither starts the bibliography nor becomes a model section."""
+    with open(BIB_RULE_REPORT, encoding="utf-8") as f:
+        parsed = parse_report(f.read())
+    summary = next(s for s in parsed["sections"] if s["heading"] == "Summary")
+    assert any("## Bibliography" in line for line in summary["lines"])
+    headings = {s["heading"] for s in parsed["sections"]}
+    assert "Bibliography" not in headings
+    model = build(BIB_RULE_REPORT)
+    assert [s["n"] for s in model["sources"]][:5] == [1, 2, 3, 4, 5]
+    joined = " ".join(s["html"] for s in model["sections"])
+    assert "arxiv.org/abs/2305.14251" not in joined
+
+
+def test_export_format_entries_parse_clean():
+    """Epic 1's export format '[N] Author (Year). "Title". URL': the right
+    title and URL, publisher None for every author shape — never
+    '& Park, M' or 'Org (n.d.)' (fails on 4ce5be8)."""
+    model = build(BIB_RULE_REPORT)
+    by_n = {s["n"]: s for s in model["sources"]}
+    assert by_n[1] == {
+        "n": 1, "title": "FActScore",
+        "url": "https://arxiv.org/abs/2305.14251", "publisher": None,
+    }
+    assert by_n[2]["title"] == "Feedback frequency for stable curricula"
+    assert by_n[2]["publisher"] is None
+    assert by_n[2]["url"] == "https://example.com/gamma"
+    assert by_n[3] == {
+        "n": 3, "title": "Anonymous field notes on spacing",
+        "url": "https://example.com/anon", "publisher": None,
+    }
+    for src in model["sources"]:
+        assert src["publisher"] not in ("& Park, M", "Gamma Teaching Quarterly (n.d.)",
+                                        "(n.d.)"), src
+
+
+def test_export_title_with_internal_period_or_quotes():
+    """A quoted title containing '. ' splits the naive segment scan, and
+    inner quote marks must stay in the title (the period case fails on
+    4ce5be8 with a truncated quoted-title and 'question\"' as publisher).
+    A title holding '"X". ' runs to the last closing quote, never
+    'Intro to "X' with 'Part 2"' as publisher."""
+    model = build(BIB_RULE_REPORT)
+    by_n = {s["n"]: s for s in model["sources"]}
+    assert by_n[4]["title"] == "Retention, pace, and the 3 p.m. question"
+    assert by_n[4]["publisher"] is None
+    assert by_n[5]["title"] == 'The "A2A" protocol survey'
+    assert by_n[5]["publisher"] is None
+    assert by_n[6] == {
+        "n": 6, "title": 'Intro to "X". Part 2',
+        "url": "https://example.com/intro", "publisher": None,
+    }
+
+
+def test_old_quoted_form_keeps_publisher():
+    """'Author, I. (Year). \"Title\". Publisher. URL' keeps its publisher
+    (it sits after the quoted title) and unquoted forms are unchanged."""
+    sources = build_sources(
+        '[1] Smith, J. (2025). "Test Research Advances". Journal of Testing. '
+        'https://example.com/paper1\n'
+        '[2] Author, D. (2023). Structured phonics sequences in early '
+        'intervention. Reading Research Annual.\n'
+        '[3] GitHub. Joplin repo metrics, retrieved 2026-10-06. '
+        'https://github.com/laurent22/joplin\n'
+    )
+    assert sources[0]["title"] == "Test Research Advances"
+    assert sources[0]["publisher"] == "Journal of Testing"
+    assert sources[1]["title"] == "Structured phonics sequences in early intervention"
+    assert sources[1]["publisher"] == "Reading Research Annual"
+    assert sources[2]["title"] == "Joplin repo metrics, retrieved 2026-10-06"
+    assert sources[2]["publisher"] == "GitHub"
+
+
+def test_bibliography_notes_kept_unnumbered():
+    """Non-entry lines in the bibliography are authored words: they reach
+    the model as unnumbered bib_notes, placed after the rows that preceded
+    them; only blank lines and thematic rules drop (fails on 4ce5be8,
+    which skipped every non-entry line). A note never takes a number, so
+    it can never be mistaken for, or shadow, a cited source."""
+    model = build(BIB_RULE_REPORT)
+    assert model["bib_notes"] == [
+        {"text": "All URLs verified March 2026.", "after": 6},
+        {"text": "Primary sources", "after": 6},
+    ]
+    titles = [s["title"] for s in model["sources"]]
+    assert "All URLs verified March 2026." not in titles
+    assert "Primary sources" not in titles
+    assert "---" not in titles
+    assert not any(n["text"] == "---" for n in model["bib_notes"])
+    # A report with no notes carries no bib_notes key (models unchanged).
+    plain = build_model("# T\n\n## Bibliography\n\n[1] A (2024). \"S\". https://e.com/a\n")
+    assert "bib_notes" not in plain
+
+
+def test_note_before_link_entries_does_not_shift_numbers():
+    """A lead-in line above link-form entries must not take [1]: body
+    citations [1]/[2] point at the link entries, as on 4ce5be8."""
+    sources, notes = build_bibliography(
+        "The following were consulted:\n\n"
+        "- [Alpha study](https://a.org)\n- [Beta study](https://b.org)\n"
+    )
+    assert [(s["n"], s["title"]) for s in sources] == [
+        (1, "Alpha study"), (2, "Beta study")]
+    assert notes == [{"text": "The following were consulted:", "after": 0}]
+
+
+def test_link_entries_autonumber_past_entries():
+    """A markdown link entry beside '[N]' entries gets an auto number
+    past the last real one — never a duplicate n (4ce5be8 restarted at 1
+    and collided with entry [1])."""
+    model = build(BIB_RULE_REPORT)
+    glossary = next(s for s in model["sources"] if s["title"] == "Glossary")
+    assert glossary == {
+        "n": 7, "title": "Glossary",
+        "url": "https://example.com/glossary", "publisher": None,
+    }
+    ns = [s["n"] for s in model["sources"]]
+    assert ns == [1, 2, 3, 4, 5, 6, 7], ns
+    sources = build_sources(
+        '[1] A (2024). "S". https://e.com/a\n- [Extra](https://e.com/x)\n'
+    )
+    assert [s["n"] for s in sources] == [1, 2]
+
+
+def test_report_renders_bib_notes_unnumbered():
+    """render_report places each note in order, with no [N] and no ref-N
+    anchor, so in-text citations only ever link to real entries."""
+    from render_report import render_report
+    model = build(BIB_RULE_REPORT)
+    html = render_report(model)
+    bib = html[html.index('id="refs"'):]
+    assert '<p class="rf-ref-note">All URLs verified March 2026.</p>' in bib
+    assert '<p class="rf-ref-note">Primary sources</p>' in bib
+    assert bib.index('id="ref-6"') < bib.index("All URLs verified") \
+        < bib.index("Primary sources") < bib.index('id="ref-7"')
+    assert re.findall(r'id="ref-(\d+)"', bib) == [str(n) for n in range(1, 8)]
+    assert "[8]" not in bib
+
+
+def test_post_bibliography_sections_stay_in_body():
+    model = build(BIB_RULE_REPORT)
+    headings = [s["heading"] for s in model["sections"]]
+    assert headings[-1] == "Appendix: After the Bibliography"
+    assert "Post-bibliography sections stay in the body" in model["sections"][-1]["html"]
+
+
+def test_bibliography_rule_fixture_model_passes_schema():
+    model = build(BIB_RULE_REPORT)
+    errors = validate_model(model)
+    assert not errors, errors
+
+
+LINK_FIDELITY_REPORT = os.path.join(RENDER_DIR, "link_fidelity_report.md")
+
+
+def test_strip_md_keeps_link_urls_every_scheme():
+    """Plain-text contexts keep a link's URL beside its text for every
+    scheme (E2-R3): the summary, findings, bullets and stat captions
+    never collapse a link to bare text (fails on 164ef39)."""
+    text = ("See the [protocol](https://e.com/p?a=1&b=2), the [mirror](http://e.com/m), "
+            "the [hook](javascript:alert(1)) and a [note](../drafts/n.md).")
+    out = strip_md(text)
+    assert "protocol (https://e.com/p?a=1&b=2)" in out
+    assert "mirror (http://e.com/m)" in out
+    assert "hook (javascript:alert(1))" in out
+    assert "note (../drafts/n.md)" in out
+    assert "](" not in out
+
+
+def test_link_fidelity_fixture_keeps_urls_in_plain_text_paths():
+    """The summary paragraphs, finding bodies and stat captions of the
+    link-fidelity fixture each keep every link's URL as 'text (URL)'
+    (fails on 164ef39, where strip_md dropped the URL)."""
+    model = build(LINK_FIDELITY_REPORT)
+    assert model["format"] == "research-summary"
+    summary = " ".join(model["executive_summary"])
+    assert "protocol page (https://example.com/protocol)" in summary
+    assert "mirror (http://example.com/mirror)" in summary
+    assert "demo hook (javascript:alert(1))" in summary
+    assert "cohort registry (https://example.com/registry)" in summary
+    bodies = " ".join(f["body"] for f in model["findings"])
+    assert "release note (https://example.com/release)" in bodies
+    assert "insecure mirror (http://example.com/insecure)" in bodies
+    assert "script link (javascript:alert(1))" in bodies
+    labels = " ".join(s["label"] for s in model["key_stats"])
+    assert "(https://example.com/registry)" in labels
+    assert "](http" not in bodies and "](https" not in bodies
+    assert "](javascript" not in summary + bodies
+
+
 if __name__ == "__main__":
     test_model_builds_for_every_fixture()
     test_format_precedence()
@@ -335,4 +559,18 @@ if __name__ == "__main__":
     test_facet_matching_survives_heading_rewording()
     test_facet_positional_fallback_when_counts_agree()
     test_sections_html_converted()
-    print("all 17 render-model tests ran and passed")
+    test_lowercase_sources_heading_stays_body_section()
+    test_exact_capitalised_sources_heading_starts_bibliography()
+    test_fenced_bibliography_heading_does_not_start_bibliography()
+    test_export_format_entries_parse_clean()
+    test_export_title_with_internal_period_or_quotes()
+    test_old_quoted_form_keeps_publisher()
+    test_bibliography_notes_kept_unnumbered()
+    test_note_before_link_entries_does_not_shift_numbers()
+    test_link_entries_autonumber_past_entries()
+    test_report_renders_bib_notes_unnumbered()
+    test_post_bibliography_sections_stay_in_body()
+    test_bibliography_rule_fixture_model_passes_schema()
+    test_strip_md_keeps_link_urls_every_scheme()
+    test_link_fidelity_fixture_keeps_urls_in_plain_text_paths()
+    print("all 31 render-model tests ran and passed")

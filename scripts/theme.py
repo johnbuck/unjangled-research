@@ -7,6 +7,9 @@ A theme is a folder holding theme.json plus optional assets: embedded
 embedded as a data URI). Every required key is validated with an error
 that names the bad key path, e.g. "colors.accent_tints: expected 4 hex
 colors". Optional keys (fonts.css, logo, brand_name) may be absent.
+An asset path (fonts.css, logo) must resolve inside the theme folder:
+a ../ path, an absolute path, or a symlink pointing out of the folder
+fails to load with an error naming the field.
 
 Usage:
     from theme import load_theme, css_vars, font_css, logo_data_uri, footer_label, motif_settings
@@ -77,6 +80,27 @@ def _check_hex_list(value, path, length=None, allow_empty=False):
     return value
 
 
+def _theme_file(folder, rel, field):
+    """Resolve a theme asset and keep it inside the theme folder: the
+    joined path, after following symlinks (realpath), must stay under the
+    folder's own realpath; a file that escapes via ../, an absolute path,
+    or a symlink fails with an error naming the field."""
+    try:
+        root = os.path.realpath(folder)
+        target = os.path.realpath(os.path.join(folder, rel))
+    except ValueError:   # an embedded NUL byte — not a usable path
+        _fail(field, f"file {rel!r} is not a valid path")
+    try:
+        inside = os.path.commonpath([root, target]) == root
+    except ValueError:   # different drives (Windows) — never inside
+        inside = False
+    if not inside:
+        _fail(field, f"file {rel!r} resolves outside the theme folder (to {target})")
+    if not os.path.isfile(target):
+        _fail(field, f"file {rel!r} not found in the theme folder")
+    return target
+
+
 def load_theme(name_or_path):
     """Load and validate a theme. A bare name resolves to themes/<name>/;
     any argument containing a path separator is treated as a folder path."""
@@ -110,16 +134,14 @@ def load_theme(name_or_path):
     css_file = fonts.get("css")
     if css_file is not None:
         _check_str(css_file, "fonts.css")
-        if not os.path.isfile(os.path.join(folder, css_file)):
-            _fail("fonts.css", f"file {css_file!r} not found in the theme folder")
+        _theme_file(folder, css_file, "fonts.css")
 
     logo = data.get("logo")
     if logo is not None:
         _check_str(logo, "logo")
         if os.path.splitext(logo)[1].lower() not in _LOGO_MIME:
             _fail("logo", "expected an .svg or .png file in the theme folder")
-        if not os.path.isfile(os.path.join(folder, logo)):
-            _fail("logo", f"file {logo!r} not found in the theme folder")
+        _theme_file(folder, logo, "logo")
     if data.get("brand_name") is not None:
         _check_str(data["brand_name"], "brand_name")
 
